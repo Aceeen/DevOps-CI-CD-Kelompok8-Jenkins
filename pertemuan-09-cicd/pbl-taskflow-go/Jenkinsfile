@@ -127,6 +127,16 @@ pipeline {
             dir("${env.PROJECT_DIR}") {
                 // Menyimpan semua hasil penting: cov.out, HTML laporan, dan binary aplikasi
                 archiveArtifacts artifacts: "cov.out, coverage.html, bin/taskflow-api", allowEmptyArchive: true
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'coverage.html',
+                    reportName: 'HTML Coverage Report',
+                    reportTitles: 'Laporan Test Coverage TaskFlow API'
+                ])
             }
 
             echo "Membersihkan PostgreSQL container: ${env.DB_CONTAINER}..."
