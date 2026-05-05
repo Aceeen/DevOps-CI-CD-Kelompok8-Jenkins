@@ -1,0 +1,154 @@
+pipeline {
+    agent any
+
+    tools {
+        go 'go-1.22' 
+    }
+    
+    environment {
+        PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
+        DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
+        COVERAGE_FILE = 'cov.out'
+        DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
+    }
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Mengambil source code dari repository...'
+                checkout scm
+            }
+        }
+
+        stage('Verify Environment') {
+            steps {
+                echo 'Mengecek environment CI...'
+                sh 'go version'
+                sh 'docker --version'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                echo 'Merapikan dependency Go...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go mod tidy'
+                }
+            }
+        }
+
+        stage('Go Vet') {
+            steps {
+                echo 'Menjalankan static analysis dengan go vet...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go vet ./...'
+                }
+            }
+        }
+
+        stage('Unit Test + Race Detector') {
+            steps {
+                echo 'Menjalankan unit test dengan race detector...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'CGO_ENABLED=1 go test ./... -race -timeout 30s'
+                }
+            }
+        }
+
+        stage('Start PostgreSQL') {
+            steps {
+                echo "Menyiapkan PostgreSQL container: ${env.DB_CONTAINER}..."
+                sh """
+                    docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true
+                    docker run -d --name ${env.DB_CONTAINER} -e POSTGRES_DB=taskflow -e POSTGRES_USER=taskflow -e POSTGRES_PASSWORD=taskflow_secret -p 5432:5432 postgres:16-alpine
+                    
+                    for i in \$(seq 1 30); do
+                      if docker exec ${env.DB_CONTAINER} pg_isready -U taskflow -d taskflow; then
+                        echo "PostgreSQL siap."
+                        exit 0
+                      fi
+                      sleep 2
+                    done
+                    exit 1
+                """
+            }
+        }
+
+        stage('Integration Test') {
+            steps {
+                echo 'Menjalankan integration test PostgreSQL...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go test -tags=integration ./... -v -race -timeout 60s'
+                }
+            }
+        }
+
+        stage('Coverage Check') {
+            steps {
+                echo 'Mengecek coverage minimal 75%...'
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=cov.out
+                        
+                        # Membuat laporan HTML untuk laporan DevOps
+                        go tool cover -html=cov.out -o coverage.html
+                        
+                        TOTAL_COVERAGE=$(go tool cover -func=cov.out | grep "total:" | awk '{print $3}' | sed 's/%//' | cut -d. -f1)
+                        echo "Total coverage: $TOTAL_COVERAGE%"
+
+                        if [ "$TOTAL_COVERAGE" -lt 75 ]; then
+                            echo "Coverage di bawah 75%"
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Build Binary') {
+            steps {
+                echo 'Melakukan build binary aplikasi...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'mkdir -p bin && CGO_ENABLED=0 GOOS=linux go build -o bin/taskflow-api ./cmd/server'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Menyimpan artifact pipeline...'
+            dir("${env.PROJECT_DIR}") {
+                // Menyimpan semua hasil penting: cov.out, HTML laporan, dan binary aplikasi
+                archiveArtifacts artifacts: "cov.out, coverage.html, bin/taskflow-api", allowEmptyArchive: true
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'coverage.html',
+                    reportName: 'HTML Coverage Report',
+                    reportTitles: 'Laporan Test Coverage TaskFlow API'
+                ])
+            }
+
+            echo "Membersihkan PostgreSQL container: ${env.DB_CONTAINER}..."
+            sh "docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true"
+        }
+
+        success {
+            echo '✅ CI Pipeline Berhasil!'
+        }
+
+        failure {
+            echo '❌ CI Pipeline Gagal!'
+        }
+    }
+}

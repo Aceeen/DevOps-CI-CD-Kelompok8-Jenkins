@@ -1,0 +1,194 @@
+---
+
+# 👥 PEMBAGIAN TUGAS
+
+---
+
+# 🧑‍💻 Orang 1 — Backend & QA Engineer  
+## Skenario: **S1 — Bug Fix, Testing, Coverage**
+
+## 📌 Tugas Detail
+1. Menjalankan seluruh unit test awal  
+2. Menemukan test yang gagal  
+3. Mengidentifikasi penyebab kegagalan test  
+4. Menganalisis apakah bug berasal dari logic, filter, atau validasi  
+5. Memperbaiki bug perhitungan (logic error)  
+6. Memperbaiki bug filter data  
+7. Memperbaiki bug validasi input  
+8. Menjalankan ulang seluruh test setelah perbaikan  
+9. Memastikan semua test PASS (tidak boleh ada yang gagal)  
+10. Menjalankan test dengan race detector  
+11. Memastikan tidak ada race condition  
+12. Menambahkan minimal 2 test baru  
+13. Membuat test untuk edge case (data kosong, input invalid, dll)  
+14. Menghitung test coverage  
+15. Memastikan coverage ≥ 75%  
+16. Menambah test jika coverage belum cukup  
+17. Mendokumentasikan hasil bug sebelum dan sesudah perbaikan  
+18. Menyusun bagian laporan S1 (bug, test, coverage)  
+
+## 📦 Output Orang 1
+- Semua bug sudah diperbaiki  
+- Semua test PASS  
+- Tidak ada race condition  
+- Coverage ≥ 75%  
+- Test tambahan tersedia  
+- Laporan S1 selesai  
+- Screenshot test & coverage tersedia  
+
+---
+
+# ⚙️ Orang 2 — CI Engineer (Jenkins)  
+## Skenario: **S2 — CI Pipeline**
+
+## 📌 Tugas Detail
+1. Membuat Jenkinsfile sebagai pipeline utama  
+2. Menyiapkan stage checkout repository  
+3. Memastikan source code berhasil diambil oleh Jenkins  
+4. Membuat stage static analysis (pengecekan kualitas kode)  
+5. Menjalankan unit test di Jenkins  
+6. Menjalankan test dengan race detector  
+7. Memastikan pipeline gagal jika test gagal  
+8. Menyiapkan integration test dengan PostgreSQL  
+9. Menghubungkan aplikasi ke database untuk testing  
+10. Menjalankan integration test di pipeline  
+11. Membuat stage coverage check  
+12. Memastikan pipeline gagal jika coverage < 75%  
+13. Membuat stage build aplikasi (binary)  
+14. Menyimpan hasil build sebagai artifact  
+15. Menyimpan file coverage sebagai artifact  
+16. Memastikan pipeline menampilkan status (merah/hijau)  
+17. Menguji pipeline dalam kondisi gagal dan sukses  
+18. Mendokumentasikan hasil pipeline  
+19. Menyusun bagian laporan S2 (CI Jenkins)  
+
+## 📦 Output Orang 2
+- Jenkinsfile selesai  
+- Pipeline CI berjalan otomatis  
+- Pipeline bisa gagal/sukses sesuai kondisi  
+- Artifact tersimpan  
+- Screenshot pipeline tersedia  
+- Laporan S2 selesai  
+
+---
+
+# 🐳 Orang 3 — DevOps Engineer  
+## Skenario: **S3 & S4 — Docker, Deploy, Smoke Test**
+
+---
+
+## 📌 Tugas Detail (S3 — Docker)
+1. Mengecek Dockerfile yang tersedia  
+2. Memastikan Dockerfile bisa digunakan untuk build  
+3. Melakukan build Docker image aplikasi  
+4. Memastikan proses build berhasil tanpa error  
+5. Memberi tag image menggunakan SHA commit  
+6. Memastikan tag image unik  
+7. Mengecek ukuran Docker image  
+8. Melakukan optimasi jika diperlukan  
+9. Membandingkan ukuran image sebelum dan sesudah  
+10. Login ke Docker Hub  
+11. Push image ke Docker Hub  
+12. Memastikan image muncul di Docker Hub  
+
+---
+
+## 📌 Tugas Detail (S4 — Deploy & Smoke Test)
+13. Menjalankan container dari Docker image  
+14. Memastikan container status running  
+15. Mengecek port aplikasi terbuka  
+16. Mengakses endpoint `/health`  
+17. Mengakses endpoint `/api/v1/stats`  
+18. Memastikan endpoint memberikan response sukses  
+19. Mengidentifikasi jika ada error saat akses endpoint  
+20. Melakukan smoke test untuk memastikan aplikasi berjalan  
+21. Menambahkan notifikasi hasil pipeline  
+22. Memastikan notifikasi muncul saat sukses/gagal  
+23. Mendokumentasikan hasil deploy dan testing  
+24. Menyusun bagian laporan S3 (Docker)  
+25. Menyusun bagian laporan S4 (Deploy & Smoke Test)  
+
+---
+
+## 📦 Output Orang 3
+- Docker image berhasil dibuat  
+- Image tersedia di Docker Hub  
+- Container berjalan dengan baik  
+- Endpoint bisa diakses  
+- Smoke test berhasil  
+- Notifikasi pipeline tersedia  
+- Laporan S3 & S4 selesai  
+- Screenshot Docker & API tersedia  
+
+---
+
+# 🔐 Orang 4 — Reliability & Security Engineer (Koordinator)  
+## Skenario: **S5 & S6 — Rollback, Security, Laporan**
+
+---
+
+## 📌 Tugas Detail (S5 — Rollback)
+1. Menentukan versi aplikasi yang stabil  
+2. Menandai image sebagai versi stable  
+3. Menyimpan referensi image stable  
+4. Membuat mekanisme rollback ke versi stable  
+5. Mensimulasikan kondisi deployment gagal  
+6. Menentukan kapan rollback harus dilakukan  
+7. Menjalankan rollback ke versi sebelumnya  
+8. Memastikan aplikasi kembali berjalan normal  
+9. Mengecek endpoint setelah rollback  
+10. Memastikan smoke test setelah rollback berhasil  
+11. Mendokumentasikan proses rollback  
+12. Menyusun bagian laporan S5  
+
+---
+
+## 📌 Tugas Detail (S6 — Security)
+13. Menjalankan minimal 2 jenis security scan  
+14. Melakukan scan dependency (library/package)  
+15. Melakukan scan keamanan kode aplikasi  
+16. Mengidentifikasi vulnerability yang ditemukan  
+17. Mengelompokkan tingkat risiko (low, medium, high)  
+18. Menganalisis dampak vulnerability  
+19. Memberikan rekomendasi perbaikan  
+20. Mendokumentasikan hasil scan  
+21. Menyusun bagian laporan S6  
+
+---
+
+## 📌 Tugas Tambahan (Koordinator Laporan)
+22. Mengumpulkan laporan dari semua anggota  
+23. Menggabungkan semua bagian laporan (S1–S6)  
+24. Menyamakan format dokumen  
+25. Membuat cover laporan  
+26. Membuat daftar isi  
+27. Menyusun pendahuluan  
+28. Membuat diagram pipeline CI/CD  
+29. Menyusun kesimpulan akhir  
+30. Menambahkan lampiran screenshot  
+31. Mengecek kelengkapan laporan  
+32. Menyiapkan alur presentasi tim  
+
+---
+
+## 📦 Output Orang 4
+- Rollback berhasil dijalankan  
+- Security scan selesai  
+- Analisis vulnerability tersedia  
+- Laporan S5 & S6 selesai  
+- Laporan final tergabung rapi  
+- Diagram pipeline tersedia  
+- Presentasi siap dilakukan  
+
+---
+
+# ✅ RINGKASAN SINGKAT
+
+| Orang | Skenario | Fokus |
+|---|---|---|
+| 1 | S1 | Bug fix, testing, coverage |
+| 2 | S2 | Jenkins CI |
+| 3 | S3, S4 | Docker & deploy |
+| 4 | S5, S6 | Rollback, security, laporan |
+
+---

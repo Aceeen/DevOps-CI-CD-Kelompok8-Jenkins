@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/taskflow/api/internal/model"
@@ -12,15 +13,52 @@ func newSvc() *service.TaskService {
 	return service.NewTaskService(repository.NewMemoryRepository())
 }
 
+type errorRepo struct{}
+
+func (e *errorRepo) Save(t model.Task) error { return fmt.Errorf("mock error") }
+func (e *errorRepo) FindByID(id string) (model.Task, bool, error) {
+	return model.Task{}, false, fmt.Errorf("mock error")
+}
+func (e *errorRepo) FindAll() ([]model.Task, error) { return nil, fmt.Errorf("mock error") }
+func (e *errorRepo) FindByStatus(status model.Status) ([]model.Task, error) {
+	return nil, fmt.Errorf("mock error")
+}
+func (e *errorRepo) Delete(id string) (bool, error) { return false, fmt.Errorf("mock error") }
+func (e *errorRepo) Count() (int, error)            { return 0, fmt.Errorf("mock error") }
+func (e *errorRepo) Close() error                   { return nil }
+
+func TestService_ErrorPaths(t *testing.T) {
+	svc := service.NewTaskService(&errorRepo{})
+	if _, err := svc.Create(model.CreateTaskRequest{Title: "A"}); err == nil {
+		t.Error("Create should err")
+	}
+	if _, err := svc.GetByID("1"); err == nil {
+		t.Error("GetByID should err")
+	}
+	if _, err := svc.GetAll(""); err == nil {
+		t.Error("GetAll should err")
+	}
+	s := model.StatusDone
+	if _, err := svc.Update("1", model.UpdateTaskRequest{Status: &s}); err == nil {
+		t.Error("Update should err")
+	}
+	if _, err := svc.Delete("1"); err == nil {
+		t.Error("Delete should err")
+	}
+	if _, err := svc.GetStats(); err == nil {
+		t.Error("GetStats should err")
+	}
+}
+
 // ── [BUG] CalculateCompletionRate ────────────────────────────────────────────
 // BUG #1: Integer division — hasil selalu 0 (kecuali semua task selesai).
 
 func TestCalculateCompletionRate(t *testing.T) {
 	tests := []struct {
-		name    string
-		tasks   []model.Task
-		want    float64
-		isBug   bool
+		name  string
+		tasks []model.Task
+		want  float64
+		isBug bool
 	}{
 		{
 			name:  "tidak ada task",
@@ -262,9 +300,77 @@ func TestRollbackStatusSimulation(t *testing.T) {
 	}
 }
 
-// ── [TODO] Tambahkan test berikut ─────────────────────────────────────────────
-// TODO mahasiswa:
-// - TestGetAll_WithStatusFilter (setelah bug #2 diperbaiki)
-// - TestGetStats_CompletionRate (setelah bug #1 diperbaiki)
-// - TestCreate_WithUnicodeTitle
-// - TestDelete_AndVerifyStats
+func TestGetAll_WithStatusFilter(t *testing.T) {
+	svc := newSvc()
+	svc.Create(model.CreateTaskRequest{Title: "Task 1"})
+	t2, _ := svc.Create(model.CreateTaskRequest{Title: "Task 2"})
+	done := model.StatusDone
+	svc.Update(t2.ID, model.UpdateTaskRequest{Status: &done})
+
+	tasks, err := svc.GetAll("done")
+	if err != nil {
+		t.Fatalf("GetAll error: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != t2.ID {
+		t.Errorf("expected 1 done task, got %d", len(tasks))
+	}
+
+	_, err = svc.GetAll("invalid")
+	if err == nil {
+		t.Error("GetAll should return error for invalid status")
+	}
+
+	allTasks, _ := svc.GetAll("")
+	if len(allTasks) != 2 {
+		t.Errorf("expected 2 total tasks, got %d", len(allTasks))
+	}
+}
+
+func TestDelete_AndVerifyStats(t *testing.T) {
+	svc := newSvc()
+	t1, _ := svc.Create(model.CreateTaskRequest{Title: "To delete"})
+
+	statsBefore, _ := svc.GetStats()
+	if statsBefore.Total != 1 {
+		t.Errorf("expected 1 task before delete, got %d", statsBefore.Total)
+	}
+
+	_, err := svc.Delete(t1.ID)
+	if err != nil {
+		t.Fatalf("Delete error: %v", err)
+	}
+
+	_, err = svc.Delete("invalid_id")
+	if err == nil {
+		t.Error("Delete should return error for non-existent ID")
+	}
+
+	statsAfter, _ := svc.GetStats()
+	if statsAfter.Total != 0 {
+		t.Errorf("expected 0 task after delete, got %d", statsAfter.Total)
+	}
+}
+
+func TestUpdate_TitleAndDescription(t *testing.T) {
+	svc := newSvc()
+	t1, _ := svc.Create(model.CreateTaskRequest{Title: "Original"})
+
+	newTitle := "Updated Title"
+	newDesc := "Updated Description"
+	updated, err := svc.Update(t1.ID, model.UpdateTaskRequest{
+		Title:       &newTitle,
+		Description: &newDesc,
+	})
+	if err != nil {
+		t.Fatalf("Update error: %v", err)
+	}
+	if updated.Title != newTitle || updated.Description != newDesc {
+		t.Errorf("Update title/description failed")
+	}
+
+	emptyTitle := ""
+	_, err = svc.Update(t1.ID, model.UpdateTaskRequest{Title: &emptyTitle})
+	if err == nil {
+		t.Error("Update should error when title is empty")
+	}
+}

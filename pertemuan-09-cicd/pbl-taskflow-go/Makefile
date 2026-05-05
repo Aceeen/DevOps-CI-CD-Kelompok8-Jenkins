@@ -5,7 +5,7 @@ REGISTRY ?= ghcr.io/your-username
 VERSION  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DB_URL   ?= postgres://taskflow:taskflow_secret@localhost:5432/taskflow?sslmode=disable
 
-.PHONY: all vet test test-race test-cover test-integration \
+.PHONY: all vet test test-race test-cover coverage-check test-integration \
         build docker-build docker-push rollback \
         db-up db-down up clean help
 
@@ -26,11 +26,22 @@ test-race:
 	@echo "→ go test -race ./..."
 	go test ./... -race -timeout 30s
 
-## Laporan coverage
+## Laporan coverage (hanya internal packages, postgres dikecualikan karena butuh DB nyata)
 test-cover:
 	@echo "→ coverage report"
-	go test ./... -coverprofile=coverage.out -covermode=atomic
+	go test ./internal/... -coverprofile=coverage.out -covermode=atomic
 	go tool cover -func=coverage.out
+
+## Cek coverage: gagal jika < 75%
+coverage-check:
+	@echo "→ coverage gate (minimum 75%)"
+	go test ./internal/... -coverprofile=coverage.out -covermode=atomic 2>/dev/null
+	@TOTAL=$$(go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+	 if [ $$(echo "$$TOTAL < 75" | bc) -eq 1 ]; then \
+	   echo "❌ Coverage $$TOTAL% < 75% — pipeline gagal!"; exit 1; \
+	 else \
+	   echo "✅ Coverage $$TOTAL% >= 75% — OK"; \
+	 fi
 
 ## Integration test (butuh DATABASE_URL / postgres aktif)
 test-integration:

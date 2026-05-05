@@ -110,7 +110,7 @@ func (r *PostgresRepository) FindByStatus(status model.Status) ([]model.Task, er
 	ctx := context.Background()
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, title, description, priority, status, created_at, updated_at, completed_at
-		 FROM tasks WHERE status != $1 ORDER BY created_at DESC`, // BUG: != seharusnya =
+		 FROM tasks WHERE status = $1 ORDER BY created_at DESC`, // BUG fixed: = instead of !=
 		status)
 	if err != nil {
 		return nil, fmt.Errorf("query FindByStatus: %w", err)
@@ -141,7 +141,10 @@ func (r *PostgresRepository) Close() error {
 }
 
 // TruncateForTest menghapus semua data — HANYA untuk integration test.
-func (r *PostgresRepository) TruncateForTest(t interface{ Helper(); Fatalf(string, ...interface{}) }) {
+func (r *PostgresRepository) TruncateForTest(t interface {
+	Helper()
+	Fatalf(string, ...interface{})
+}) {
 	t.Helper()
 	if _, err := r.pool.Exec(context.Background(), `TRUNCATE TABLE tasks`); err != nil {
 		t.Fatalf("TruncateForTest error: %v", err)
