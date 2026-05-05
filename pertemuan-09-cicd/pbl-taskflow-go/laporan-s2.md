@@ -1,7 +1,4 @@
-```markdown
 # ⚙️ Skenario 2: CI Pipeline Automation (Jenkins)
-**Engineer:** Orang 2 (CI Engineer)
----
 
 **Kelompok**: 8  
 **Engineer**: Orang 2 (CI Engineer)  
@@ -91,22 +88,21 @@ Beberapa tantangan teknis yang berhasil dipecahkan:
 ## 📊 5. Hasil Akhir (Evidence)
 
 ### ✅ Pipeline Sukses (HIJAU)
-Pipeline berhasil melewati semua tahap dengan **Total Coverage 80.7%**.
-> `![](docs/S2-CI-Jenkins/build-hijau)`
-> `![](docs/S2-CI-Jenkins/build-info)`
+Pipeline berhasil melewati semua tahap dengan **Total Coverage 80.7%**.  
+![](S2-CI-Jenkins/build-hijau.png)  
+![](S2-CI-Jenkins/build-info.png)  
 
 ### ❌ Pipeline Gagal (MERAH)
-Bukti sistem CI memblokir kode jika coverage di bawah 75% atau terdapat test yang gagal.
-> `![](docs/S2-CI-Jenkins/build-merah)`
-> `![](docs/S2-CI-Jenkins/build-merah2)`
-> `![](docs/S2-CI-Jenkins/build-info)`
+Bukti sistem CI memblokir kode jika coverage di bawah 75% atau terdapat test yang gagal.  
+![Error Build](S2-CI-Jenkins/build-merah.png)  
+![Threshold tidak tercapai](S2-CI-Jenkins/build-merah2.png)  
+![Information Build](S2-CI-Jenkins/build-info.png)
 
 ### 📦 Artifacts
 File yang dihasilkan dan disimpan sebagai hasil build stabil:
 1.  `taskflow-api` (Executable Binary)
 2.  `coverage.html` (Laporan Visual Interaktif)
-3.  `cov.out` (Data Mentah Coverage)
-> `![](docs/S2-CI-Jenkins/artifacts)`
+3.  `cov.out` (Data Mentah Coverage)  
+![](S2-CI-Jenkins/artifacts.png)  
 
 ---
-```
