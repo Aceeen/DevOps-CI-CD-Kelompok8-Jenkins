@@ -7,9 +7,7 @@ pipeline {
     
     environment {
         PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
-        
         DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
-        
         COVERAGE_FILE = 'cov.out'
         DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
     }
@@ -23,12 +21,14 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                echo 'Mengambil source code dari repository...'
                 checkout scm
             }
         }
 
         stage('Verify Environment') {
             steps {
+                echo 'Mengecek environment CI...'
                 sh 'go version'
                 sh 'docker --version'
             }
@@ -36,6 +36,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
+                echo 'Merapikan dependency Go...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'go mod tidy'
                 }
@@ -44,6 +45,7 @@ pipeline {
 
         stage('Go Vet') {
             steps {
+                echo 'Menjalankan static analysis dengan go vet...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'go vet ./...'
                 }
@@ -52,6 +54,7 @@ pipeline {
 
         stage('Unit Test + Race Detector') {
             steps {
+                echo 'Menjalankan unit test dengan race detector...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'CGO_ENABLED=1 go test ./... -race -timeout 30s'
                 }
@@ -79,6 +82,7 @@ pipeline {
 
         stage('Integration Test') {
             steps {
+                echo 'Menjalankan integration test PostgreSQL...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'go test -tags=integration ./... -v -race -timeout 60s'
                 }
@@ -87,29 +91,29 @@ pipeline {
 
         stage('Coverage Check') {
             steps {
+                echo 'Mengecek coverage minimal 75%...'
                 dir("${env.PROJECT_DIR}") {
                     sh '''
                         CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=cov.out
                         
-                        # TAMBAHKAN BARIS INI: Membuat laporan HTML
+                        # Membuat laporan HTML untuk laporan DevOps
                         go tool cover -html=cov.out -o coverage.html
                         
                         TOTAL_COVERAGE=$(go tool cover -func=cov.out | grep "total:" | awk '{print $3}' | sed 's/%//' | cut -d. -f1)
-                        if [ "$TOTAL_COVERAGE" -lt 75 ]; then exit 1; fi
+                        echo "Total coverage: $TOTAL_COVERAGE%"
+
+                        if [ "$TOTAL_COVERAGE" -lt 75 ]; then
+                            echo "Coverage di bawah 75%"
+                            exit 1
+                        fi
                     '''
                 }
             }
         }
 
-    post {
-        always {
-            dir("${env.PROJECT_DIR}") {
-                archiveArtifacts artifacts: "cov.out, coverage.html, bin/taskflow-api", allowEmptyArchive: true
-            }
-
-
         stage('Build Binary') {
             steps {
+                echo 'Melakukan build binary aplikasi...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'mkdir -p bin && CGO_ENABLED=0 GOOS=linux go build -o bin/taskflow-api ./cmd/server'
                 }
@@ -119,12 +123,22 @@ pipeline {
 
     post {
         always {
+            echo 'Menyimpan artifact pipeline...'
             dir("${env.PROJECT_DIR}") {
-                archiveArtifacts artifacts: "cov.out, bin/taskflow-api", allowEmptyArchive: true
+                // Menyimpan semua hasil penting: cov.out, HTML laporan, dan binary aplikasi
+                archiveArtifacts artifacts: "cov.out, coverage.html, bin/taskflow-api", allowEmptyArchive: true
             }
+
+            echo "Membersihkan PostgreSQL container: ${env.DB_CONTAINER}..."
             sh "docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true"
         }
-        success { echo '✅ CI Pipeline Berhasil!' }
-        failure { echo '❌ CI Pipeline Gagal!' }
+
+        success {
+            echo '✅ CI Pipeline Berhasil!'
+        }
+
+        failure {
+            echo '❌ CI Pipeline Gagal!'
+        }
     }
 }
