@@ -6,6 +6,7 @@ pipeline {
     }
     
     environment {
+        PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
         DB_URL = 'postgres://taskflow:taskflow_secret@localhost:5432/taskflow?sslmode=disable'
         COVERAGE_FILE = 'cov.out'
     }
@@ -37,21 +38,27 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo 'Merapikan dependency Go...'
-                sh 'go mod tidy'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go mod tidy'
+                }
             }
         }
 
         stage('Go Vet') {
             steps {
                 echo 'Menjalankan static analysis dengan go vet...'
-                sh 'go vet ./...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go vet ./...'
+                }
             }
         }
 
         stage('Unit Test + Race Detector') {
             steps {
                 echo 'Menjalankan unit test dengan race detector...'
-                sh 'go test ./... -race -timeout 30s'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go test ./... -race -timeout 30s'
+                }
             }
         }
 
@@ -89,39 +96,45 @@ pipeline {
         stage('Integration Test') {
             steps {
                 echo 'Menjalankan integration test PostgreSQL...'
-                sh 'DATABASE_URL="${DB_URL}" go test -tags=integration ./... -v -race -timeout 60s'
+                dir("${env.PROJECT_DIR}") {
+                    sh "DATABASE_URL='${env.DB_URL}' go test -tags=integration ./... -v -race -timeout 60s"
+                }
             }
         }
 
         stage('Coverage Check') {
             steps {
                 echo 'Mengecek coverage minimal 75% sesuai standar dosen...'
-                sh '''
-                    go test ./... -coverprofile=${COVERAGE_FILE}
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        go test ./... -coverprofile=${COVERAGE_FILE}
 
-                    TOTAL_COVERAGE=$(go tool cover -func=${COVERAGE_FILE} | awk '/total:/ {gsub("%","",$3); print $3}')
-                    echo "Total coverage: ${TOTAL_COVERAGE}%"
+                        TOTAL_COVERAGE=$(go tool cover -func=${COVERAGE_FILE} | awk '/total:/ {gsub("%","",$3); print $3}')
+                        echo "Total coverage: ${TOTAL_COVERAGE}%"
 
-                    awk -v coverage="${TOTAL_COVERAGE}" 'BEGIN {
-                        if (coverage < 75) {
-                            printf("Coverage %.2f%% kurang dari syarat minimal 75%%\\n", coverage)
-                            exit 1
-                        }
-                        printf("Coverage %.2f%% memenuhi syarat minimal 75%%\\n", coverage)
-                    }'
-                '''
+                        awk -v coverage="${TOTAL_COVERAGE}" 'BEGIN {
+                            if (coverage < 75) {
+                                printf("Coverage %.2f%% kurang dari syarat minimal 75%%\\n", coverage)
+                                exit 1
+                            }
+                            printf("Coverage %.2f%% memenuhi syarat minimal 75%%\\n", coverage)
+                        }'
+                    '''
+                }
             }
         }
 
         stage('Build Binary') {
             steps {
                 echo 'Melakukan build binary aplikasi...'
-                sh '''
-                    mkdir -p bin
-                    CGO_ENABLED=0 GOOS=linux go build \
-                      -ldflags="-w -s" \
-                      -o bin/taskflow-api ./cmd/server
-                '''
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        mkdir -p bin
+                        CGO_ENABLED=0 GOOS=linux go build \
+                          -ldflags="-w -s" \
+                          -o bin/taskflow-api ./cmd/server
+                    '''
+                }
             }
         }
     }
@@ -129,7 +142,7 @@ pipeline {
     post {
         always {
             echo 'Menyimpan artifact pipeline...'
-            archiveArtifacts artifacts: 'cov.out, bin/taskflow-api', allowEmptyArchive: true
+            archiveArtifacts artifacts: "${env.PROJECT_DIR}/${env.COVERAGE_FILE}, ${env.PROJECT_DIR}/bin/taskflow-api", allowEmptyArchive: true
 
             echo 'Membersihkan PostgreSQL container...'
             sh 'docker rm -f taskflow-ci-db 2>/dev/null || true'
