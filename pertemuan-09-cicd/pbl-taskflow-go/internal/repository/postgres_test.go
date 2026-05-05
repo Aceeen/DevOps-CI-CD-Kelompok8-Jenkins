@@ -5,12 +5,13 @@
 // Membutuhkan DATABASE_URL environment variable.
 //
 // Di pipeline CI, set postgres sebagai service container dan tambahkan:
-//   DATABASE_URL=postgres://taskflow:secret@localhost:5432/taskflow?sslmode=disable
+//
+//	DATABASE_URL=postgres://taskflow:secret@localhost:5432/taskflow?sslmode=disable
 //
 // Contoh GitHub Actions:
 //   - run: go test -tags=integration -race ./...
 //     env:
-//       DATABASE_URL: ${{ env.DATABASE_URL }}
+//     DATABASE_URL: ${{ env.DATABASE_URL }}
 package repository_test
 
 import (

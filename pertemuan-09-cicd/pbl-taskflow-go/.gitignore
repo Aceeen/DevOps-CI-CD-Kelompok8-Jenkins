@@ -21,3 +21,7 @@ go.work.sum
 
 # Docker volumes (lokal saja)
 pgdata/
+
+# Dokumentasi
+pembagian_tugas.txt
+Laporan-progress.md

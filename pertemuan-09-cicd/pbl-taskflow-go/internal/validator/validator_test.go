@@ -24,6 +24,7 @@ func TestIsValidPriority(t *testing.T) {
 		{name: "critical tidak valid", input: "critical", want: false},
 		{name: "string kosong tidak valid", input: "", want: false},
 		{name: "case-insensitive HIGH", input: "HIGH", want: true},
+		{name: "invalid priority with leading/trailing spaces", input: " high ", want: false},
 	}
 
 	for _, tc := range tests {
@@ -54,6 +55,7 @@ func TestIsValidStatus(t *testing.T) {
 		{"pending", false},
 		{"canceled", false},
 		{"", false},
+		{" TODO ", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {

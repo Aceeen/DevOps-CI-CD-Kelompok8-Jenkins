@@ -48,9 +48,9 @@ type CreateTaskRequest struct {
 
 // UpdateTaskRequest adalah payload untuk mengupdate task.
 type UpdateTaskRequest struct {
-	Title       *string  `json:"title,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	Status      *Status  `json:"status,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Status      *Status `json:"status,omitempty"`
 }
 
 // TaskListResponse adalah format respons untuk list task.

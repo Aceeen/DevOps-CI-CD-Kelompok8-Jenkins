@@ -156,7 +156,57 @@ func TestConcurrentSave(t *testing.T) {
 	}
 }
 
-// ── [TODO] Tambah minimal 2 test ─────────────────────────────────────────────
-// - TestSave_UpdateExisting: simpan task dengan ID sama → cek data terupdate
-// - TestCount_AfterDelete: Count akurat setelah serangkaian save + delete
-// - TestFindByStatus_InProgress: filter in_progress (setelah Bug #2 diperbaiki)
+func TestMemoryRepository_Extras(t *testing.T) {
+	repo := repository.NewMemoryRepository()
+	saveTask(t, repo, "1", "Todo A", model.StatusTodo)
+
+	if err := repo.Close(); err != nil {
+		t.Errorf("Close should not return error")
+	}
+
+	if str := repo.String(); str != "MemoryRepository{count: 1}" {
+		t.Errorf("String output incorrect, got %s", str)
+	}
+
+	repo.Clear()
+	if c, _ := repo.Count(); c != 0 {
+		t.Errorf("Clear failed, count is %d", c)
+	}
+}
+
+func TestSave_UpdateExisting(t *testing.T) {
+	r := newRepo(t)
+	saveTask(t, r, "1", "Old Title", model.StatusTodo)
+
+	saveTask(t, r, "1", "New Title", model.StatusDone)
+
+	task, ok, _ := r.FindByID("1")
+	if !ok || task.Title != "New Title" || task.Status != model.StatusDone {
+		t.Errorf("Update existing task failed")
+	}
+}
+
+func TestCount_AfterDelete(t *testing.T) {
+	r := newRepo(t)
+	saveTask(t, r, "1", "A", model.StatusTodo)
+	saveTask(t, r, "2", "B", model.StatusTodo)
+
+	r.Delete("1")
+
+	count, _ := r.Count()
+	if count != 1 {
+		t.Errorf("Count after delete should be 1, got %d", count)
+	}
+}
+
+func TestFindByStatus_InProgress(t *testing.T) {
+	r := newRepo(t)
+	saveTask(t, r, "1", "A", model.StatusTodo)
+	saveTask(t, r, "2", "B", model.StatusInProgress)
+	saveTask(t, r, "3", "C", model.StatusInProgress)
+
+	tasks, _ := r.FindByStatus(model.StatusInProgress)
+	if len(tasks) != 2 {
+		t.Errorf("Expected 2 InProgress tasks, got %d", len(tasks))
+	}
+}
