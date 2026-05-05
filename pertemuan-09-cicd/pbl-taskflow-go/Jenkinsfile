@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        DB_URL = 'postgres://taskflow:taskflow_secret@localhost:5432/taskflow?sslmode=disable'
+        COVERAGE_FILE = 'cov.out'
+    }
+
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
@@ -17,9 +22,11 @@ pipeline {
 
         stage('Verify Environment') {
             steps {
-                echo 'Mengecek versi Go...'
+                echo 'Mengecek environment CI...'
                 sh 'go version'
                 sh 'git --version'
+                sh 'make --version'
+                sh 'docker --version'
             }
         }
 
@@ -32,24 +39,84 @@ pipeline {
 
         stage('Go Vet') {
             steps {
-                echo 'Menjalankan go vet...'
+                echo 'Menjalankan static analysis dengan go vet...'
                 sh 'go vet ./...'
             }
         }
 
-        stage('Unit Test') {
+        stage('Unit Test + Race Detector') {
             steps {
-                echo 'Menjalankan unit test...'
-                sh 'go test ./... -v'
+                echo 'Menjalankan unit test dengan race detector...'
+                sh 'go test ./... -race -timeout 30s'
+            }
+        }
+
+        stage('Start PostgreSQL') {
+            steps {
+                echo 'Menyiapkan PostgreSQL container untuk integration test...'
+                sh '''
+                    docker rm -f taskflow-ci-db 2>/dev/null || true
+
+                    docker run -d \
+                      --name taskflow-ci-db \
+                      -e POSTGRES_DB=taskflow \
+                      -e POSTGRES_USER=taskflow \
+                      -e POSTGRES_PASSWORD=taskflow_secret \
+                      -p 5432:5432 \
+                      postgres:16-alpine
+
+                    echo "Menunggu PostgreSQL siap..."
+                    for i in $(seq 1 30); do
+                      if docker exec taskflow-ci-db pg_isready -U taskflow -d taskflow; then
+                        echo "PostgreSQL siap menerima koneksi."
+                        exit 0
+                      fi
+                      echo "Percobaan $i: PostgreSQL belum siap..."
+                      sleep 2
+                    done
+
+                    echo "PostgreSQL gagal siap."
+                    docker logs taskflow-ci-db
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Integration Test') {
+            steps {
+                echo 'Menjalankan integration test PostgreSQL...'
+                sh 'DATABASE_URL="${DB_URL}" go test -tags=integration ./... -v -race -timeout 60s'
+            }
+        }
+
+        stage('Coverage Check') {
+            steps {
+                echo 'Mengecek coverage minimal 75% sesuai standar dosen...'
+                sh '''
+                    go test ./... -coverprofile=${COVERAGE_FILE}
+
+                    TOTAL_COVERAGE=$(go tool cover -func=${COVERAGE_FILE} | awk '/total:/ {gsub("%","",$3); print $3}')
+                    echo "Total coverage: ${TOTAL_COVERAGE}%"
+
+                    awk -v coverage="${TOTAL_COVERAGE}" 'BEGIN {
+                        if (coverage < 75) {
+                            printf("Coverage %.2f%% kurang dari syarat minimal 75%%\\n", coverage)
+                            exit 1
+                        }
+                        printf("Coverage %.2f%% memenuhi syarat minimal 75%%\\n", coverage)
+                    }'
+                '''
             }
         }
 
         stage('Build Binary') {
             steps {
-                echo 'Build aplikasi...'
+                echo 'Melakukan build binary aplikasi...'
                 sh '''
                     mkdir -p bin
-                    go build -o bin/taskflow-api ./cmd/server
+                    CGO_ENABLED=0 GOOS=linux go build \
+                      -ldflags="-w -s" \
+                      -o bin/taskflow-api ./cmd/server
                 '''
             }
         }
@@ -57,16 +124,19 @@ pipeline {
 
     post {
         always {
-            echo 'Pipeline selesai dijalankan.'
-            archiveArtifacts artifacts: 'bin/taskflow-api', allowEmptyArchive: true
+            echo 'Menyimpan artifact pipeline...'
+            archiveArtifacts artifacts: 'cov.out, bin/taskflow-api', allowEmptyArchive: true
+
+            echo 'Membersihkan PostgreSQL container...'
+            sh 'docker rm -f taskflow-ci-db 2>/dev/null || true'
         }
 
         success {
-            echo 'Pipeline berhasil.'
+            echo 'CI Pipeline berhasil: semua pengecekan lulus.'
         }
 
         failure {
-            echo 'Pipeline gagal. Cek stage yang merah.'
+            echo 'CI Pipeline gagal: cek stage yang merah.'
         }
     }
 }
