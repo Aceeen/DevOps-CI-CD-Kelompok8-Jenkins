@@ -226,18 +226,7 @@ Exit code: 0 ✅ — TIDAK ADA RACE CONDITION
 
 ---
 
-## 7. Checklist Deliverables Orang 1
-
-- [x] Semua bug sudah diperbaiki (3 dari 3)
-- [x] Semua test PASS (unit + integration)
-- [x] Tidak ada race condition (`go test -race ./... -tags=integration`)
-- [x] Coverage ≥ 75% (tercapai **80.7%** dengan integration test)
-- [x] Test tambahan tersedia (≥ 2 test baru per file test)
-- [x] Laporan S1 selesai (dokumen ini)
-
----
-
-## 8. Cara Mereproduksi Hasil
+## 7. Cara Mereproduksi Hasil
 
 ### Setup Environment (dengan Docker)
 
