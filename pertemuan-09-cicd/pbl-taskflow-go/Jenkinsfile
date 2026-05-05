@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        go 'go-1.22' 
+    }
+    
     environment {
         DB_URL = 'postgres://taskflow:taskflow_secret@localhost:5432/taskflow?sslmode=disable'
         COVERAGE_FILE = 'cov.out'
