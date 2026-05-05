@@ -8,11 +8,10 @@ pipeline {
     environment {
         PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
         
-        // Menggunakan IP Gateway Docker agar Jenkins bisa mengakses container PostgreSQ
-        DB_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
+        // REVISI: Kita masukkan DATABASE_URL ke environment utama agar Go otomatis membacanya
+        DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
         
         COVERAGE_FILE = 'cov.out'
-        
         DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
     }
 
@@ -25,24 +24,19 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo 'Mengambil source code dari repository...'
                 checkout scm
             }
         }
 
         stage('Verify Environment') {
             steps {
-                echo 'Mengecek environment CI...'
                 sh 'go version'
-                sh 'git --version'
-                // sh 'make --version' // REVISI: make tidak tersedia di container jenkins default
                 sh 'docker --version'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                echo 'Merapikan dependency Go...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'go mod tidy'
                 }
@@ -51,7 +45,6 @@ pipeline {
 
         stage('Go Vet') {
             steps {
-                echo 'Menjalankan static analysis dengan go vet...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'go vet ./...'
                 }
@@ -60,7 +53,6 @@ pipeline {
 
         stage('Unit Test + Race Detector') {
             steps {
-                echo 'Menjalankan unit test dengan race detector...'
                 dir("${env.PROJECT_DIR}") {
                     sh 'CGO_ENABLED=1 go test ./... -race -timeout 30s'
                 }
@@ -72,27 +64,15 @@ pipeline {
                 echo "Menyiapkan PostgreSQL container: ${env.DB_CONTAINER}..."
                 sh """
                     docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true
-
-                    docker run -d \
-                      --name ${env.DB_CONTAINER} \
-                      -e POSTGRES_DB=taskflow \
-                      -e POSTGRES_USER=taskflow \
-                      -e POSTGRES_PASSWORD=taskflow_secret \
-                      -p 5432:5432 \
-                      postgres:16-alpine
-
-                    echo "Menunggu PostgreSQL siap..."
+                    docker run -d --name ${env.DB_CONTAINER} -e POSTGRES_DB=taskflow -e POSTGRES_USER=taskflow -e POSTGRES_PASSWORD=taskflow_secret -p 5432:5432 postgres:16-alpine
+                    
                     for i in \$(seq 1 30); do
                       if docker exec ${env.DB_CONTAINER} pg_isready -U taskflow -d taskflow; then
-                        echo "PostgreSQL siap menerima koneksi."
+                        echo "PostgreSQL siap."
                         exit 0
                       fi
-                      echo "Percobaan \$i: PostgreSQL belum siap..."
                       sleep 2
                     done
-
-                    echo "PostgreSQL gagal siap."
-                    docker logs ${env.DB_CONTAINER}
                     exit 1
                 """
             }
@@ -100,47 +80,38 @@ pipeline {
 
         stage('Integration Test') {
             steps {
-                echo 'Menjalankan integration test PostgreSQL...'
                 dir("${env.PROJECT_DIR}") {
-                    sh "DATABASE_URL='${env.DB_URL}' go test -tags=integration ./... -v -race -timeout 60s"
+                    // Cukup jalankan go test, DATABASE_URL sudah ada di environment
+                    sh 'go test -tags=integration ./... -v -race -timeout 60s'
                 }
             }
         }
 
         stage('Coverage Check') {
             steps {
-                echo 'Mengecek coverage minimal 75%...'
                 dir("${env.PROJECT_DIR}") {
-                    // REVISI: Gunakan double quote (""") agar variabel ${env.DB_URL} bisa terbaca oleh shell
-                    sh """
-                        # Tambahkan DATABASE_URL agar test database ikut dihitung coveragenya
-                        CGO_ENABLED=1 DATABASE_URL='${env.DB_URL}' go test -tags=integration ./... -coverprofile=${env.COVERAGE_FILE}
+                    // Menggunakan ''' agar tidak perlu repot dengan escaping tanda $
+                    sh '''
+                        CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=cov.out
+                        
+                        # Cara mengambil angka coverage yang lebih aman bagi Jenkins
+                        TOTAL_COVERAGE=$(go tool cover -func=cov.out | grep "total:" | awk '{print $3}' | sed 's/%//')
+                        echo "Total coverage: $TOTAL_COVERAGE%"
 
-                        TOTAL_COVERAGE=\$(go tool cover -func=${env.COVERAGE_FILE} | awk '/total:/ {gsub("%","","\$3"); print \$3}')
-                        echo "Total coverage: \$TOTAL_COVERAGE%"
-
-                        awk -v coverage="\$TOTAL_COVERAGE" 'BEGIN {
-                            if (coverage < 75) {
-                                printf("Coverage %.2f%% kurang dari syarat minimal 75%%\\n", coverage)
-                                exit 1
-                            }
-                            printf("Coverage %.2f%% memenuhi syarat minimal 75%%\\n", coverage)
-                        }'
-                    """
+                        if [ $(echo "$TOTAL_COVERAGE < 75" | bc -l) -eq 1 ]; then
+                            echo "Coverage $TOTAL_COVERAGE% di bawah batas 75%"
+                            exit 1
+                        fi
+                        echo "Coverage $TOTAL_COVERAGE% memenuhi syarat!"
+                    '''
                 }
             }
         }
 
         stage('Build Binary') {
             steps {
-                echo 'Melakukan build binary aplikasi...'
                 dir("${env.PROJECT_DIR}") {
-                    sh '''
-                        mkdir -p bin
-                        CGO_ENABLED=0 GOOS=linux go build \
-                          -ldflags="-w -s" \
-                          -o bin/taskflow-api ./cmd/server
-                    '''
+                    sh 'mkdir -p bin && CGO_ENABLED=0 GOOS=linux go build -o bin/taskflow-api ./cmd/server'
                 }
             }
         }
@@ -148,21 +119,12 @@ pipeline {
 
     post {
         always {
-            echo 'Menyimpan artifact pipeline...'
             dir("${env.PROJECT_DIR}") {
-                archiveArtifacts artifacts: "${env.COVERAGE_FILE}, bin/taskflow-api", allowEmptyArchive: true
+                archiveArtifacts artifacts: "cov.out, bin/taskflow-api", allowEmptyArchive: true
             }
-
-            echo "Membersihkan PostgreSQL container: ${env.DB_CONTAINER}..."
             sh "docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true"
         }
-
-        success {
-            echo 'CI Pipeline berhasil: semua pengecekan lulus.'
-        }
-
-        failure {
-            echo 'CI Pipeline gagal: cek stage yang merah.'
-        }
+        success { echo '✅ CI Pipeline Berhasil!' }
+        failure { echo '❌ CI Pipeline Gagal!' }
     }
 }
