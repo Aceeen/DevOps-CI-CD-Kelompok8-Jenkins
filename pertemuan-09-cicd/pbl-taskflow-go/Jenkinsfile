@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Mengambil source code dari repository...'
+                checkout scm
+            }
+        }
+
+        stage('Verify Environment') {
+            steps {
+                echo 'Mengecek versi Go...'
+                sh 'go version'
+                sh 'git --version'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                echo 'Merapikan dependency Go...'
+                sh 'go mod tidy'
+            }
+        }
+
+        stage('Go Vet') {
+            steps {
+                echo 'Menjalankan go vet...'
+                sh 'go vet ./...'
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                echo 'Menjalankan unit test...'
+                sh 'go test ./... -v'
+            }
+        }
+
+        stage('Build Binary') {
+            steps {
+                echo 'Build aplikasi...'
+                sh '''
+                    mkdir -p bin
+                    go build -o bin/taskflow-api ./cmd/server
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline selesai dijalankan.'
+            archiveArtifacts artifacts: 'bin/taskflow-api', allowEmptyArchive: true
+        }
+
+        success {
+            echo 'Pipeline berhasil.'
+        }
+
+        failure {
+            echo 'Pipeline gagal. Cek stage yang merah.'
+        }
+    }
+}
