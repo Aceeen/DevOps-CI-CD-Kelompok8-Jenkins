@@ -8,7 +8,6 @@ pipeline {
     environment {
         PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
         
-        // REVISI: Kita masukkan DATABASE_URL ke environment utama agar Go otomatis membacanya
         DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
         
         COVERAGE_FILE = 'cov.out'
@@ -81,7 +80,6 @@ pipeline {
         stage('Integration Test') {
             steps {
                 dir("${env.PROJECT_DIR}") {
-                    // Cukup jalankan go test, DATABASE_URL sudah ada di environment
                     sh 'go test -tags=integration ./... -v -race -timeout 60s'
                 }
             }
@@ -90,23 +88,25 @@ pipeline {
         stage('Coverage Check') {
             steps {
                 dir("${env.PROJECT_DIR}") {
-                    // Menggunakan ''' agar tidak perlu repot dengan escaping tanda $
                     sh '''
                         CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=cov.out
                         
-                        # Cara mengambil angka coverage yang lebih aman bagi Jenkins
-                        TOTAL_COVERAGE=$(go tool cover -func=cov.out | grep "total:" | awk '{print $3}' | sed 's/%//')
-                        echo "Total coverage: $TOTAL_COVERAGE%"
-
-                        if [ $(echo "$TOTAL_COVERAGE < 75" | bc -l) -eq 1 ]; then
-                            echo "Coverage $TOTAL_COVERAGE% di bawah batas 75%"
-                            exit 1
-                        fi
-                        echo "Coverage $TOTAL_COVERAGE% memenuhi syarat!"
+                        # TAMBAHKAN BARIS INI: Membuat laporan HTML
+                        go tool cover -html=cov.out -o coverage.html
+                        
+                        TOTAL_COVERAGE=$(go tool cover -func=cov.out | grep "total:" | awk '{print $3}' | sed 's/%//' | cut -d. -f1)
+                        if [ "$TOTAL_COVERAGE" -lt 75 ]; then exit 1; fi
                     '''
                 }
             }
         }
+
+    post {
+        always {
+            dir("${env.PROJECT_DIR}") {
+                archiveArtifacts artifacts: "cov.out, coverage.html, bin/taskflow-api", allowEmptyArchive: true
+            }
+
 
         stage('Build Binary') {
             steps {
