@@ -30,7 +30,7 @@ pipeline {
                 echo 'Mengecek environment CI...'
                 sh 'go version'
                 sh 'git --version'
-                sh 'make --version'
+                // sh 'make --version'
                 sh 'docker --version'
             }
         }
