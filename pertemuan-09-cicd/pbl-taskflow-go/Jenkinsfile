@@ -109,10 +109,12 @@ pipeline {
 
         stage('Coverage Check') {
             steps {
-                echo 'Mengecek coverage minimal 75% sesuai standar dosen...'
+                echo 'Mengecek coverage minimal 75%...'
                 dir("${env.PROJECT_DIR}") {
                     sh '''
-                        go test ./... -coverprofile=${COVERAGE_FILE}
+                        # REVISI: Tambahkan -tags=integration agar test database dihitung ke coverage
+                        # Tambahkan CGO_ENABLED=1 agar race detector tidak error jika ada
+                        CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=${COVERAGE_FILE}
 
                         TOTAL_COVERAGE=$(go tool cover -func=${COVERAGE_FILE} | awk '/total:/ {gsub("%","",$3); print $3}')
                         echo "Total coverage: ${TOTAL_COVERAGE}%"
