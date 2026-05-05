@@ -1,4 +1,4 @@
-# ⚙️ Skenario 2: CI Pipeline Automation (Jenkins)
+# Skenario 2: CI Pipeline Automation (Jenkins)
 
 **Kelompok**: 8  
 **Engineer**: Orang 2 (CI Engineer)  
@@ -6,7 +6,7 @@
 **Platform**: Docker Lokal  
 ---
 
-## 📌 Deskripsi Tugas
+## 1. Deskripsi Tugas
 Membangun sistem *Continuous Integration* (CI) otomatis menggunakan **Jenkins** yang berjalan di atas **Docker Lokal**. Pipeline ini berfungsi sebagai "Quality Gate" untuk memastikan setiap kode yang di-push ke repository memenuhi standar kualitas sebelum dapat dideploy.
 
 ### Fokus Khusus:
@@ -17,24 +17,7 @@ Membangun sistem *Continuous Integration* (CI) otomatis menggunakan **Jenkins** 
 
 ---
 
-## 📌 1. Deskripsi Pipeline
-Pipeline ini dibangun menggunakan **Declarative Jenkinsfile** untuk mengotomatisasi proses pengujian dan penjaminan kualitas kode (Quality Gate). Setiap perubahan kode yang di-push ke repository akan diverifikasi secara otomatis melalui serangkaian tahapan mulai dari analisis statis hingga pengujian integrasi dengan database nyata.
-
-### Alur Kerja (Pipeline Flow):
-```mermaid
-graph LR
-    A[Push/PR] --> B[Checkout]
-    B --> C[Go Vet]
-    C --> D[Unit Test + Race]
-    D --> E[Integration Test DB]
-    E --> F[Coverage Gate 75%]
-    F --> G[Build Binary]
-    G --> H[Store Artifacts]
-```
-
----
-
-## 🚀 2. Panduan Setup & Cara Menjalankan
+## 2. Panduan Setup & Cara Menjalankan
 Untuk mereplikasi environment CI ini di laptop lokal, ikuti langkah-langkah berikut:
 
 ### A. Menjalankan Server Jenkins
@@ -61,7 +44,7 @@ docker exec -u 0 -it jenkins-devops chmod 666 /var/run/docker.sock
 
 ---
 
-## 🔍 3. Detail Tahapan Stage (Quality Gate)
+## 3. Detail Tahapan Stage (Quality Gate)
 
 | Stage | Fungsi | Deskripsi Teknis |
 |-------|--------|------------------|
@@ -73,7 +56,7 @@ docker exec -u 0 -it jenkins-devops chmod 666 /var/run/docker.sock
 
 ---
 
-## 🛠️ 4. Troubleshooting & Solusi Teknis
+## 4. Troubleshooting & Solusi Teknis
 
 Beberapa tantangan teknis yang berhasil dipecahkan:
 1.  **Komunikasi Antar Container**: Menggunakan IP Gateway `172.17.0.1` pada `DATABASE_URL` karena `localhost` di dalam Jenkins merujuk pada container itu sendiri, bukan host atau container DB.
@@ -85,7 +68,7 @@ Beberapa tantangan teknis yang berhasil dipecahkan:
 
 ---
 
-## 📊 5. Hasil Akhir (Evidence)
+## 5. Hasil Akhir (Evidence)
 
 ### ✅ Pipeline Sukses (HIJAU)
 Pipeline berhasil melewati semua tahap dengan **Total Coverage 80.7%**.  
