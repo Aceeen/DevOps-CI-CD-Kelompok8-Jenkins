@@ -7,9 +7,13 @@ pipeline {
     
     environment {
         PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
-        // DB_URL = 'postgres://taskflow:taskflow_secret@localhost:5432/taskflow?sslmode=disable'
-        DB_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'        
+        
+        // Menggunakan IP Gateway Docker agar Jenkins bisa mengakses container PostgreSQ
+        DB_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
+        
         COVERAGE_FILE = 'cov.out'
+        
+        DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
     }
 
     options {
@@ -31,7 +35,7 @@ pipeline {
                 echo 'Mengecek environment CI...'
                 sh 'go version'
                 sh 'git --version'
-                // sh 'make --version'
+                // sh 'make --version' // REVISI: make tidak tersedia di container jenkins default
                 sh 'docker --version'
             }
         }
@@ -65,12 +69,12 @@ pipeline {
 
         stage('Start PostgreSQL') {
             steps {
-                echo 'Menyiapkan PostgreSQL container untuk integration test...'
-                sh '''
-                    docker rm -f taskflow-ci-db 2>/dev/null || true
+                echo "Menyiapkan PostgreSQL container: ${env.DB_CONTAINER}..."
+                sh """
+                    docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true
 
                     docker run -d \
-                      --name taskflow-ci-db \
+                      --name ${env.DB_CONTAINER} \
                       -e POSTGRES_DB=taskflow \
                       -e POSTGRES_USER=taskflow \
                       -e POSTGRES_PASSWORD=taskflow_secret \
@@ -78,19 +82,19 @@ pipeline {
                       postgres:16-alpine
 
                     echo "Menunggu PostgreSQL siap..."
-                    for i in $(seq 1 30); do
-                      if docker exec taskflow-ci-db pg_isready -U taskflow -d taskflow; then
+                    for i in \$(seq 1 30); do
+                      if docker exec ${env.DB_CONTAINER} pg_isready -U taskflow -d taskflow; then
                         echo "PostgreSQL siap menerima koneksi."
                         exit 0
                       fi
-                      echo "Percobaan $i: PostgreSQL belum siap..."
+                      echo "Percobaan \$i: PostgreSQL belum siap..."
                       sleep 2
                     done
 
                     echo "PostgreSQL gagal siap."
-                    docker logs taskflow-ci-db
+                    docker logs ${env.DB_CONTAINER}
                     exit 1
-                '''
+                """
             }
         }
 
@@ -143,10 +147,12 @@ pipeline {
     post {
         always {
             echo 'Menyimpan artifact pipeline...'
-            archiveArtifacts artifacts: "${env.PROJECT_DIR}/${env.COVERAGE_FILE}, ${env.PROJECT_DIR}/bin/taskflow-api", allowEmptyArchive: true
+            dir("${env.PROJECT_DIR}") {
+                archiveArtifacts artifacts: "${env.COVERAGE_FILE}, bin/taskflow-api", allowEmptyArchive: true
+            }
 
-            echo 'Membersihkan PostgreSQL container...'
-            sh 'docker rm -f taskflow-ci-db 2>/dev/null || true'
+            echo "Membersihkan PostgreSQL container: ${env.DB_CONTAINER}..."
+            sh "docker rm -f ${env.DB_CONTAINER} 2>/dev/null || true"
         }
 
         success {
