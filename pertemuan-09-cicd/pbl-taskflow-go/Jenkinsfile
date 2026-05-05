@@ -111,22 +111,22 @@ pipeline {
             steps {
                 echo 'Mengecek coverage minimal 75%...'
                 dir("${env.PROJECT_DIR}") {
-                    sh '''
-                        # REVISI: Tambahkan -tags=integration agar test database dihitung ke coverage
-                        # Tambahkan CGO_ENABLED=1 agar race detector tidak error jika ada
-                        CGO_ENABLED=1 go test -tags=integration ./... -coverprofile=${COVERAGE_FILE}
+                    // REVISI: Gunakan double quote (""") agar variabel ${env.DB_URL} bisa terbaca oleh shell
+                    sh """
+                        # Tambahkan DATABASE_URL agar test database ikut dihitung coveragenya
+                        CGO_ENABLED=1 DATABASE_URL='${env.DB_URL}' go test -tags=integration ./... -coverprofile=${env.COVERAGE_FILE}
 
-                        TOTAL_COVERAGE=$(go tool cover -func=${COVERAGE_FILE} | awk '/total:/ {gsub("%","",$3); print $3}')
-                        echo "Total coverage: ${TOTAL_COVERAGE}%"
+                        TOTAL_COVERAGE=\$(go tool cover -func=${env.COVERAGE_FILE} | awk '/total:/ {gsub("%","","\$3"); print \$3}')
+                        echo "Total coverage: \$TOTAL_COVERAGE%"
 
-                        awk -v coverage="${TOTAL_COVERAGE}" 'BEGIN {
+                        awk -v coverage="\$TOTAL_COVERAGE" 'BEGIN {
                             if (coverage < 75) {
                                 printf("Coverage %.2f%% kurang dari syarat minimal 75%%\\n", coverage)
                                 exit 1
                             }
                             printf("Coverage %.2f%% memenuhi syarat minimal 75%%\\n", coverage)
                         }'
-                    '''
+                    """
                 }
             }
         }
