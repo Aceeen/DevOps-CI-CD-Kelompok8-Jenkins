@@ -110,6 +110,17 @@ var validPriorities = map[model.Priority]bool{
 
 ---
 
+### Run Test Kode Bug
+1. go test ./... -v
+![bugFail1](../images/bug-fail1.png)
+![bugFail2](../images/bug-fail2.png)
+![bugFail3](../images/bug-fail3.png)
+
+2. go test -race ./...
+![racefail](../images/test-race-fail.png)
+
+---
+
 ## 3. Test Baru yang Ditambahkan
 
 Selain memperbaiki bug, ditambahkan test case baru untuk meningkatkan coverage dan ketahanan:
@@ -232,32 +243,19 @@ Exit code: 0 ✅ — TIDAK ADA RACE CONDITION
 
 ```bash
 # 1. Buat network dan jalankan PostgreSQL
-docker network create taskflow-test-net
-docker run -d --name taskflow-pg --network taskflow-test-net \
-  -e POSTGRES_USER=taskflow \
-  -e POSTGRES_PASSWORD=taskflow_secret \
-  -e POSTGRES_DB=taskflow \
-  postgres:16-alpine
+docker network create taskflow-test-net; docker run -d --name taskflow-pg --network taskflow-test-net -e POSTGRES_USER=taskflow -e POSTGRES_PASSWORD=taskflow_secret -e POSTGRES_DB=taskflow postgres:16-alpine
 
 # 2. Jalankan unit test saja
-docker run --rm -v "$(pwd):/app" -w /app golang:1.22 \
-  bash -c "go test ./..."
+docker run --rm -v "${PWD}:/app" -w /app golang:1.22 bash -c 'go test ./...'
 
 # 3. Jalankan integration test dengan PostgreSQL
-docker run --rm --network taskflow-test-net \
-  -v "$(pwd):/app" -w /app \
-  -e DATABASE_URL="postgres://taskflow:taskflow_secret@taskflow-pg:5432/taskflow?sslmode=disable" \
-  golang:1.22 bash -c "go test ./... -tags=integration -coverprofile=cov.out && go tool cover -func=cov.out"
+docker run --rm --network taskflow-test-net -v "${PWD}:/app" -w /app -e DATABASE_URL="postgres://taskflow:taskflow_secret@taskflow-pg:5432/taskflow?sslmode=disable" golang:1.22 bash -c 'go test ./... -tags=integration -coverprofile=cov.out && go tool cover -func=cov.out'
 
 # 4. Jalankan race detector
-docker run --rm --network taskflow-test-net \
-  -v "$(pwd):/app" -w /app \
-  -e DATABASE_URL="postgres://taskflow:taskflow_secret@taskflow-pg:5432/taskflow?sslmode=disable" \
-  golang:1.22 bash -c "go test -race ./... -tags=integration"
+docker run --rm --network taskflow-test-net -v "${PWD}:/app" -w /app -e DATABASE_URL="postgres://taskflow:taskflow_secret@taskflow-pg:5432/taskflow?sslmode=disable" golang:1.22 bash -c 'go test -race ./... -tags=integration'
 
 # 5. Cleanup
-docker stop taskflow-pg && docker rm taskflow-pg
-docker network rm taskflow-test-net
+docker stop taskflow-pg; docker rm taskflow-pg; docker network rm taskflow-test-net
 ```
 
 ---
