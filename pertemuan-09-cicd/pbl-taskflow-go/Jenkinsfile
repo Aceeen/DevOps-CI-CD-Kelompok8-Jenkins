@@ -44,7 +44,7 @@ pipeline {
         COVERAGE_HTML = 'coverage.html'
         DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
         STAGING_CONTAINER = 'taskflow-api-staging'
-        DOCKERHUB_REPO = 'docker.io/your-dockerhub-username/taskflow-api'
+        DOCKERHUB_REPO = 'docker.io/dianggraaeni/taskflow-api'
         DOCKER_HOST_GATEWAY = '172.17.0.1'
         DEPLOY_PORT = '18080'
         STAGING_DATABASE_URL = ''
