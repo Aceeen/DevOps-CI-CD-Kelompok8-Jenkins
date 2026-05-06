@@ -1,13 +1,16 @@
 FROM jenkins/jenkins:lts
 
-# Pindah ke root untuk install aplikasi
 USER root
 
-# Install make dan docker CLI
-RUN apt-get update && apt-get install -y make docker.io && apt-get clean
+RUN apt-get update && apt-get install -y \
+    curl \
+    docker.io \
+    gcc \
+    libc6-dev \
+    make \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Masukkan user jenkins ke grup docker agar bisa pakai docker tanpa sudo
 RUN usermod -aG docker jenkins
 
-# Balik lagi ke user jenkins demi keamanan
 USER jenkins
