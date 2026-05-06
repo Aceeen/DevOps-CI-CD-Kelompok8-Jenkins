@@ -1,0 +1,336 @@
+import groovy.json.JsonOutput
+
+def notifySlack(String status, String shortSha) {
+    def icon = status == 'SUCCESS' ? ':white_check_mark:' : ':x:'
+    def color = status == 'SUCCESS' ? 'good' : 'danger'
+    def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('Asia/Bangkok'))
+    def branch = env.BRANCH_NAME ?: 'local'
+    def message = """${icon} TaskFlow Jenkins ${status}
+Branch: ${branch}
+Commit: ${shortSha}
+Time: ${timestamp}
+Build: ${env.BUILD_URL ?: 'n/a'}"""
+
+    try {
+        writeFile(
+            file: "${env.PROJECT_DIR}/slack-payload.json",
+            text: JsonOutput.toJson([attachments: [[color: color, text: message]]]),
+        )
+
+        withCredentials([string(credentialsId: 'taskflow-slack-webhook', variable: 'SLACK_WEBHOOK_URL')]) {
+            sh '''
+                curl -sS -X POST \
+                  -H "Content-type: application/json" \
+                  --data @${PROJECT_DIR}/slack-payload.json \
+                  "$SLACK_WEBHOOK_URL"
+            '''
+        }
+    } catch (err) {
+        echo "Slack notification skipped: ${err}"
+    }
+}
+
+pipeline {
+    agent any
+
+    tools {
+        go 'go-1.22'
+    }
+
+    environment {
+        PROJECT_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
+        DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
+        COVERAGE_FILE = 'cov.out'
+        COVERAGE_HTML = 'coverage.html'
+        DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
+        STAGING_CONTAINER = 'taskflow-api-staging'
+        DOCKERHUB_REPO = 'docker.io/your-dockerhub-username/taskflow-api'
+        DOCKER_HOST_GATEWAY = '172.17.0.1'
+        DEPLOY_PORT = '18080'
+        STAGING_DATABASE_URL = ''
+        SHORT_SHA = ''
+        IMAGE_TAG = ''
+        IMAGE_REF = ''
+        STABLE_REF = ''
+        APP_BASE_URL = ''
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out repository...'
+                checkout scm
+            }
+        }
+
+        stage('Init Metadata') {
+            steps {
+                script {
+                    env.SHORT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+                    env.IMAGE_TAG = "sha-${env.SHORT_SHA}"
+                    env.IMAGE_REF = "${env.DOCKERHUB_REPO}:${env.IMAGE_TAG}"
+                    env.STABLE_REF = "${env.DOCKERHUB_REPO}:stable"
+                    env.APP_BASE_URL = "http://${env.DOCKER_HOST_GATEWAY}:${env.DEPLOY_PORT}"
+
+                    writeFile(
+                        file: "${env.PROJECT_DIR}/deploy-metadata.txt",
+                        text: """branch=${env.BRANCH_NAME ?: 'local'}
+commit=${env.GIT_COMMIT ?: env.SHORT_SHA}
+image=${env.IMAGE_REF}
+stable=${env.STABLE_REF}
+app_base_url=${env.APP_BASE_URL}
+build_url=${env.BUILD_URL ?: ''}
+""",
+                    )
+                }
+            }
+        }
+
+        stage('Verify Environment') {
+            steps {
+                echo 'Verifying CI dependencies...'
+                sh 'go version'
+                sh 'docker --version'
+                sh 'curl --version | head -n 1'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                echo 'Tidying Go modules...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go mod tidy'
+                }
+            }
+        }
+
+        stage('Go Vet') {
+            steps {
+                echo 'Running go vet...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go vet ./...'
+                }
+            }
+        }
+
+        stage('Unit Test + Race Detector') {
+            steps {
+                echo 'Running unit tests with race detector...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'CGO_ENABLED=1 go test ./... -race -timeout 30s'
+                }
+            }
+        }
+
+        stage('Start PostgreSQL') {
+            steps {
+                echo "Starting PostgreSQL container ${env.DB_CONTAINER}..."
+                sh '''
+                    docker rm -f "$DB_CONTAINER" 2>/dev/null || true
+                    docker run -d \
+                      --name "$DB_CONTAINER" \
+                      -e POSTGRES_DB=taskflow \
+                      -e POSTGRES_USER=taskflow \
+                      -e POSTGRES_PASSWORD=taskflow_secret \
+                      -p 5432:5432 \
+                      postgres:16-alpine
+
+                    for i in $(seq 1 30); do
+                      if docker exec "$DB_CONTAINER" pg_isready -U taskflow -d taskflow; then
+                        echo "PostgreSQL is ready."
+                        exit 0
+                      fi
+                      sleep 2
+                    done
+
+                    echo "PostgreSQL did not become ready in time."
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Integration Test') {
+            steps {
+                echo 'Running integration tests...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'go test -tags=integration ./... -v -race -timeout 60s'
+                }
+            }
+        }
+
+        stage('Coverage Check') {
+            steps {
+                echo 'Enforcing minimum 75% coverage...'
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        CGO_ENABLED=1 go test -tags=integration ./... -coverprofile="$COVERAGE_FILE" -covermode=atomic
+                        go tool cover -html="$COVERAGE_FILE" -o "$COVERAGE_HTML"
+
+                        total=$(go tool cover -func="$COVERAGE_FILE" | awk '/total:/ {gsub("%","",$3); print int($3)}')
+                        echo "Total coverage: ${total}%"
+
+                        if [ "$total" -lt 75 ]; then
+                          echo "Coverage is below 75%."
+                          exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Build Binary') {
+            steps {
+                echo 'Building Linux binary...'
+                dir("${env.PROJECT_DIR}") {
+                    sh 'mkdir -p bin && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o bin/taskflow-api ./cmd/server'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building image ${env.IMAGE_REF}..."
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        docker build -t "$IMAGE_REF" .
+                        docker image inspect "$IMAGE_REF" --format '{{.Repository}}:{{.Tag}} {{.Size}}' > image-inspect.txt
+                    '''
+                }
+            }
+        }
+
+        stage('Compare Image Size') {
+            steps {
+                echo 'Comparing multi-stage image with legacy single-stage image...'
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        docker build -f Dockerfile.legacy -t taskflow-api:legacy-compare .
+
+                        multi_human=$(docker image ls "$IMAGE_REF" --format '{{.Size}}')
+                        multi_bytes=$(docker image inspect "$IMAGE_REF" --format '{{.Size}}')
+                        legacy_human=$(docker image ls taskflow-api:legacy-compare --format '{{.Size}}')
+                        legacy_bytes=$(docker image inspect taskflow-api:legacy-compare --format '{{.Size}}')
+                        delta_bytes=$((legacy_bytes - multi_bytes))
+
+                        cat > image-size-report.txt <<EOF
+Multi-stage image: $IMAGE_REF
+  size_human: $multi_human
+  size_bytes: $multi_bytes
+Legacy image: taskflow-api:legacy-compare
+  size_human: $legacy_human
+  size_bytes: $legacy_bytes
+Difference_bytes: $delta_bytes
+EOF
+
+                        cat image-size-report.txt
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                echo 'Logging in to Docker Hub...'
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                    sh 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin'
+                }
+            }
+        }
+
+        stage('Push SHA Image') {
+            steps {
+                echo "Pushing image ${env.IMAGE_REF}..."
+                sh 'docker push "$IMAGE_REF"'
+            }
+        }
+
+        stage('Deploy to Staging') {
+            steps {
+                echo "Deploying ${env.IMAGE_REF} to local staging..."
+                sh '''
+                    docker rm -f "$STAGING_CONTAINER" 2>/dev/null || true
+
+                    extra_env=""
+                    if [ -n "$STAGING_DATABASE_URL" ]; then
+                      extra_env="-e DATABASE_URL=$STAGING_DATABASE_URL"
+                    fi
+
+                    docker run -d --rm \
+                      --name "$STAGING_CONTAINER" \
+                      -p "$DEPLOY_PORT:8080" \
+                      $extra_env \
+                      "$IMAGE_REF"
+
+                    docker ps --filter "name=$STAGING_CONTAINER"
+                '''
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                echo "Running smoke test against ${env.APP_BASE_URL}..."
+                sh '''
+                    sleep 5
+                    curl -f "$APP_BASE_URL/health"
+                    curl -f "$APP_BASE_URL/api/v1/stats"
+                    echo "Smoke test passed."
+                '''
+            }
+        }
+
+        stage('Promote Stable') {
+            steps {
+                echo "Promoting ${env.IMAGE_REF} to stable..."
+                sh '''
+                    docker tag "$IMAGE_REF" "$STABLE_REF"
+                    docker push "$STABLE_REF"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Archiving CI/CD artifacts...'
+            dir("${env.PROJECT_DIR}") {
+                archiveArtifacts artifacts: 'cov.out, coverage.html, bin/taskflow-api, deploy-metadata.txt, image-inspect.txt, image-size-report.txt', allowEmptyArchive: true
+
+                publishHTML([
+                    allowMissing: true,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'coverage.html',
+                    reportName: 'Coverage Report',
+                    reportTitles: 'TaskFlow Coverage'
+                ])
+            }
+
+            sh 'docker rm -f "$DB_CONTAINER" 2>/dev/null || true'
+            sh 'docker logout || true'
+        }
+
+        success {
+            script {
+                notifySlack('SUCCESS', env.SHORT_SHA ?: 'unknown')
+            }
+        }
+
+        failure {
+            script {
+                notifySlack('FAILED', env.SHORT_SHA ?: 'unknown')
+            }
+        }
+    }
+}
