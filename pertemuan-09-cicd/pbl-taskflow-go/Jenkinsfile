@@ -110,7 +110,7 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
-                        env.DOCKERHUB_REPO = "docker.io/${DOCKERHUB_USERNAME}/${env.DOCKERHUB_IMAGE_NAME}"
+                        env.DOCKERHUB_REPO = "docker.io/${env.DOCKERHUB_USERNAME}/${env.DOCKERHUB_IMAGE_NAME}"
                     }
 
                     def metadata = resolveBuildMetadata()
