@@ -16,9 +16,7 @@
 6. [Konfigurasi Jenkins](#konfigurasi-jenkins)
 7. [Cara Menjalankan Secara Manual](#cara-menjalankan-secara-manual)
 8. [Alur Pipeline Lengkap](#alur-pipeline-lengkap)
-9. [Demo Presentasi](#demo-presentasi)
-10. [Bukti yang Perlu Dikumpulkan](#bukti-yang-perlu-dikumpulkan)
-11. [Troubleshooting](#troubleshooting)
+9. [Dokumentasi](#dokumentasi)
 
 ---
 
@@ -96,13 +94,19 @@ docker.io/<username>/taskflow-api:stable
 ### Perbandingan Ukuran Image
 
 Pipeline secara otomatis membangun `Dockerfile.legacy` (single-stage) untuk pembanding dan menulis hasilnya ke `image-size-report.txt`:
-
+![alt text](image-8.png)
 ```
 === Perbandingan Ukuran Docker Image ===
-Multi-stage (Dockerfile)     : ~7 MB
-Single-stage (Dockerfile.legacy): ~900 MB
+Multi-stage (Dockerfile)        : 3.39 MB
+Single-stage (Dockerfile.legacy) : 1.44 GB
 
-Penghematan: ~893 MB (99%)
+Penghematan: 1.43 GB (99.7%)
+
+Analisis:
+Dengan menggunakan metode multi-stage build dan base image 'scratch', 
+kami berhasil memangkas ukuran image sebesar 99.7%. Image yang lebih 
+kecil mempercepat proses deployment dan meminimalkan celah keamanan 
+karena tidak mengandung sistem operasi yang tidak diperlukan.
 ```
 
 File ini disimpan sebagai **artifact pipeline** dan dapat diunduh dari halaman build Jenkins.
@@ -189,7 +193,7 @@ Tambahkan dua credentials berikut di **Manage Jenkins → Credentials → System
 Buka `Jenkinsfile` dan ubah baris berikut:
 
 ```groovy
-// Ganti ini dengan repo Docker Hub tim kamu
+// Sesuaikan repo Docker Hub
 DOCKERHUB_REPO = 'docker.io/your-dockerhub-username/taskflow-api'
 ```
 
@@ -309,63 +313,20 @@ Push ke branch main/develop
 
 ---
 
-## Demo Presentasi
-
-### Skenario A — Demo Sukses (menit 7–10)
-
-1. Tunjukkan commit terakhir di branch `main`
-2. Buka pipeline Jenkins dan tunjukkan semua stage hijau
-3. Buka Docker Hub dan tunjukkan:
-   - Tag `sha-xxxxxxx` yang baru dibuat
-   - Tag `stable` yang sudah diperbarui
-4. Tunjukkan isi `image-size-report.txt` sebagai artifact
-5. Tunjukkan notifikasi Slack sukses
-
-### Skenario B — Demo Gagal (smoke test)
-
-Cara paling aman untuk memaksa smoke test gagal tanpa merusak kode:
-
-1. Ubah path smoke test di `Jenkinsfile`:
-   ```groovy
-   // Sebelum (benar)
-   curl -f http://172.17.0.1:18080/api/v1/stats
-
-   // Ubah menjadi (sengaja salah)
-   curl -f http://172.17.0.1:18080/api/v1/statss
-   ```
-2. Commit dan push
-3. Tunjukkan pipeline merah di stage `Smoke Test`
-4. Tunjukkan notifikasi Slack gagal
-5. Tunjukkan bahwa tag `stable` **tidak** diperbarui
-6. Revert perubahan, push lagi → tunjukkan pipeline hijau kembali
-
----
-
 ## Dokumentasi
 - Stage CD Jenkins yang seluruhnya hijau
 ![alt text](image.png)
-- Stage `Smoke Test` yang gagal (untuk demo B)
-- [ ] Screenshot Docker Hub menampilkan tag `sha-xxxxxxx`
-- [ ] Screenshot Docker Hub menampilkan tag `stable`
-- [ ] Screenshot isi `image-size-report.txt` (multi-stage vs single-stage)
-- [ ] Screenshot notifikasi Slack sukses
-- [ ] Screenshot notifikasi Slack gagal
+- Stage `Smoke Test` yang gagal
+![alt text](image-1.png)
+- Docker Hub menampilkan tag `sha-xxxxxxx`
+![alt text](image-3.png)
+- Docker Hub menampilkan tag `stable`
+![alt text](image-4.png)
+- Isi `image-size-report.txt` (multi-stage vs single-stage)
+![alt text](image-5.png)
+- Notifikasi Slack sukses
+![alt text](image-7.png)
+- Notifikasi Slack gagal
+![alt text](image-6.png)
 
 ---
-
-## Troubleshooting
-
-**Pipeline gagal di stage Push dengan error `unauthorized`**  
-→ Pastikan credential `dockerhub-credentials` sudah ditambahkan di Jenkins dan ID-nya persis sama dengan yang digunakan di `Jenkinsfile`.
-
-**Smoke test selalu gagal dengan `connection refused`**  
-→ Cek apakah container `taskflow-api-staging` benar-benar berjalan dengan `docker ps`. Pastikan IP gateway `172.17.0.1` bisa dicapai dari dalam container Jenkins dengan `docker exec <jenkins-container> curl http://172.17.0.1:18080/health`.
-
-**Tag `stable` tidak diperbarui meski smoke test PASS**  
-→ Pastikan credential Docker Hub memiliki izin write ke repository. Coba login manual di host: `docker login` lalu cek apakah `docker push` berhasil.
-
-**Notifikasi Slack tidak terkirim**  
-→ Verifikasi URL webhook di credential `taskflow-slack-webhook`. Test secara manual: `curl -X POST -H 'Content-type: application/json' --data '{"text":"test"}' <WEBHOOK_URL>`.
-
-**Port `18080` sudah dipakai**  
-→ Ganti `APP_PORT` di `Jenkinsfile` ke port lain yang tersedia, misalnya `18081`. Pastikan konsisten di seluruh stage (deploy dan smoke test).
