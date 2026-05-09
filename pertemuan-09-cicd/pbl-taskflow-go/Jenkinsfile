@@ -6,22 +6,28 @@ def resolveBuildMetadata() {
         shortSha = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
     }
 
-    if (!env.DOCKERHUB_REPO?.trim()) {
-        error('DOCKERHUB_REPO must not be empty.')
+    def dockerRepo = env.DOCKERHUB_REPO?.trim()
+    if (!dockerRepo) {
+        dockerRepo = 'docker.io/dianggraeni/taskflow-api'
     }
 
+    def imageTag = "sha-${shortSha}"
+    def imageRef = "${dockerRepo}:${imageTag}"
+    def stableRef = "${dockerRepo}:stable"
+    def appBaseUrl = "http://${env.DOCKER_HOST_GATEWAY}:${env.DEPLOY_PORT}"
+
     env.SHORT_SHA = shortSha
-    env.IMAGE_TAG = "sha-${shortSha}"
-    env.IMAGE_REF = "${env.DOCKERHUB_REPO}:${env.IMAGE_TAG}"
-    env.STABLE_REF = "${env.DOCKERHUB_REPO}:stable"
-    env.APP_BASE_URL = "http://${env.DOCKER_HOST_GATEWAY}:${env.DEPLOY_PORT}"
+    env.IMAGE_TAG = imageTag
+    env.IMAGE_REF = imageRef
+    env.STABLE_REF = stableRef
+    env.APP_BASE_URL = appBaseUrl
 
     return [
-        shortSha  : env.SHORT_SHA,
-        imageTag  : env.IMAGE_TAG,
-        imageRef  : env.IMAGE_REF,
-        stableRef : env.STABLE_REF,
-        appBaseUrl: env.APP_BASE_URL,
+        shortSha  : shortSha,
+        imageTag  : imageTag,
+        imageRef  : imageRef,
+        stableRef : stableRef,
+        appBaseUrl: appBaseUrl,
     ]
 }
 
@@ -228,7 +234,7 @@ build_url=${env.BUILD_URL ?: ''}
                         withEnv(["IMAGE_REF=${metadata.imageRef}"]) {
                             sh '''
                                 docker build -t "$IMAGE_REF" .
-                                docker image inspect "$IMAGE_REF" --format '{{.Repository}}:{{.Tag}} {{.Size}}' > image-inspect.txt
+                                docker image inspect "$IMAGE_REF" --format '{{index .RepoTags 0}} {{.Size}}' > image-inspect.txt
                             '''
                         }
                     }
