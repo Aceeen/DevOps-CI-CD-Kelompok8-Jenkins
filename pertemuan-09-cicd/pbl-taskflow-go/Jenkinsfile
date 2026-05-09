@@ -1,5 +1,30 @@
 import groovy.json.JsonOutput
 
+def resolveBuildMetadata() {
+    def shortSha = env.SHORT_SHA?.trim()
+    if (!shortSha) {
+        shortSha = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+    }
+
+    if (!env.DOCKERHUB_REPO?.trim()) {
+        error('DOCKERHUB_REPO must not be empty.')
+    }
+
+    env.SHORT_SHA = shortSha
+    env.IMAGE_TAG = "sha-${shortSha}"
+    env.IMAGE_REF = "${env.DOCKERHUB_REPO}:${env.IMAGE_TAG}"
+    env.STABLE_REF = "${env.DOCKERHUB_REPO}:stable"
+    env.APP_BASE_URL = "http://${env.DOCKER_HOST_GATEWAY}:${env.DEPLOY_PORT}"
+
+    return [
+        shortSha  : env.SHORT_SHA,
+        imageTag  : env.IMAGE_TAG,
+        imageRef  : env.IMAGE_REF,
+        stableRef : env.STABLE_REF,
+        appBaseUrl: env.APP_BASE_URL,
+    ]
+}
+
 def notifySlack(String status, String shortSha) {
     def icon = status == 'SUCCESS' ? ':white_check_mark:' : ':x:'
     def color = status == 'SUCCESS' ? 'good' : 'danger'
@@ -44,10 +69,10 @@ pipeline {
         COVERAGE_HTML = 'coverage.html'
         DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
         STAGING_CONTAINER = 'taskflow-api-staging'
-        DOCKERHUB_REPO = 'docker.io/dianggraaeni/taskflow-api'
+        DOCKERHUB_REPO = 'docker.io/dianggraeni/taskflow-api'
         DOCKER_HOST_GATEWAY = '172.17.0.1'
         DEPLOY_PORT = '18080'
-        STAGING_DATABASE_URL = ''
+        STAGING_DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
         SHORT_SHA = ''
         IMAGE_TAG = ''
         IMAGE_REF = ''
@@ -77,19 +102,15 @@ pipeline {
         stage('Init Metadata') {
             steps {
                 script {
-                    env.SHORT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
-                    env.IMAGE_TAG = "sha-${env.SHORT_SHA}"
-                    env.IMAGE_REF = "${env.DOCKERHUB_REPO}:${env.IMAGE_TAG}"
-                    env.STABLE_REF = "${env.DOCKERHUB_REPO}:stable"
-                    env.APP_BASE_URL = "http://${env.DOCKER_HOST_GATEWAY}:${env.DEPLOY_PORT}"
+                    def metadata = resolveBuildMetadata()
 
                     writeFile(
                         file: "${env.PROJECT_DIR}/deploy-metadata.txt",
                         text: """branch=${env.BRANCH_NAME ?: 'local'}
-commit=${env.GIT_COMMIT ?: env.SHORT_SHA}
-image=${env.IMAGE_REF}
-stable=${env.STABLE_REF}
-app_base_url=${env.APP_BASE_URL}
+commit=${env.GIT_COMMIT ?: metadata.shortSha}
+image=${metadata.imageRef}
+stable=${metadata.stableRef}
+app_base_url=${metadata.appBaseUrl}
 build_url=${env.BUILD_URL ?: ''}
 """,
                     )
@@ -200,30 +221,38 @@ build_url=${env.BUILD_URL ?: ''}
 
         stage('Build Docker Image') {
             steps {
-                echo "Building image ${env.IMAGE_REF}..."
-                dir("${env.PROJECT_DIR}") {
-                    sh '''
-                        docker build -t "$IMAGE_REF" .
-                        docker image inspect "$IMAGE_REF" --format '{{.Repository}}:{{.Tag}} {{.Size}}' > image-inspect.txt
-                    '''
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo "Building image ${metadata.imageRef}..."
+                    dir("${env.PROJECT_DIR}") {
+                        withEnv(["IMAGE_REF=${metadata.imageRef}"]) {
+                            sh '''
+                                docker build -t "$IMAGE_REF" .
+                                docker image inspect "$IMAGE_REF" --format '{{.Repository}}:{{.Tag}} {{.Size}}' > image-inspect.txt
+                            '''
+                        }
+                    }
                 }
             }
         }
 
         stage('Compare Image Size') {
             steps {
-                echo 'Comparing multi-stage image with legacy single-stage image...'
-                dir("${env.PROJECT_DIR}") {
-                    sh '''
-                        docker build -f Dockerfile.legacy -t taskflow-api:legacy-compare .
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo 'Comparing multi-stage image with legacy single-stage image...'
+                    dir("${env.PROJECT_DIR}") {
+                        withEnv(["IMAGE_REF=${metadata.imageRef}"]) {
+                            sh '''
+                                docker build -f Dockerfile.legacy -t taskflow-api:legacy-compare .
 
-                        multi_human=$(docker image ls "$IMAGE_REF" --format '{{.Size}}')
-                        multi_bytes=$(docker image inspect "$IMAGE_REF" --format '{{.Size}}')
-                        legacy_human=$(docker image ls taskflow-api:legacy-compare --format '{{.Size}}')
-                        legacy_bytes=$(docker image inspect taskflow-api:legacy-compare --format '{{.Size}}')
-                        delta_bytes=$((legacy_bytes - multi_bytes))
+                                multi_human=$(docker image ls "$IMAGE_REF" --format '{{.Size}}')
+                                multi_bytes=$(docker image inspect "$IMAGE_REF" --format '{{.Size}}')
+                                legacy_human=$(docker image ls taskflow-api:legacy-compare --format '{{.Size}}')
+                                legacy_bytes=$(docker image inspect taskflow-api:legacy-compare --format '{{.Size}}')
+                                delta_bytes=$((legacy_bytes - multi_bytes))
 
-                        cat > image-size-report.txt <<EOF
+                                cat > image-size-report.txt <<EOF
 Multi-stage image: $IMAGE_REF
   size_human: $multi_human
   size_bytes: $multi_bytes
@@ -233,8 +262,10 @@ Legacy image: taskflow-api:legacy-compare
 Difference_bytes: $delta_bytes
 EOF
 
-                        cat image-size-report.txt
-                    '''
+                                cat image-size-report.txt
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -250,52 +281,75 @@ EOF
 
         stage('Push SHA Image') {
             steps {
-                echo "Pushing image ${env.IMAGE_REF}..."
-                sh 'docker push "$IMAGE_REF"'
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo "Pushing image ${metadata.imageRef}..."
+                    withEnv(["IMAGE_REF=${metadata.imageRef}"]) {
+                        sh 'docker push "$IMAGE_REF"'
+                    }
+                }
             }
         }
 
         stage('Deploy to Staging') {
             steps {
-                echo "Deploying ${env.IMAGE_REF} to local staging..."
-                sh '''
-                    docker rm -f "$STAGING_CONTAINER" 2>/dev/null || true
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo "Deploying ${metadata.imageRef} to local staging..."
+                    withEnv(["IMAGE_REF=${metadata.imageRef}"]) {
+                        sh '''
+                            docker rm -f "$STAGING_CONTAINER" 2>/dev/null || true
 
-                    extra_env=""
-                    if [ -n "$STAGING_DATABASE_URL" ]; then
-                      extra_env="-e DATABASE_URL=$STAGING_DATABASE_URL"
-                    fi
+                            extra_env=""
+                            if [ -n "$STAGING_DATABASE_URL" ]; then
+                              extra_env="-e DATABASE_URL=$STAGING_DATABASE_URL"
+                            fi
 
-                    docker run -d --rm \
-                      --name "$STAGING_CONTAINER" \
-                      -p "$DEPLOY_PORT:8080" \
-                      $extra_env \
-                      "$IMAGE_REF"
+                            docker run -d --rm \
+                              --name "$STAGING_CONTAINER" \
+                              -p "$DEPLOY_PORT:8080" \
+                              $extra_env \
+                              "$IMAGE_REF"
 
-                    docker ps --filter "name=$STAGING_CONTAINER"
-                '''
+                            docker ps --filter "name=$STAGING_CONTAINER"
+                        '''
+                    }
+                }
             }
         }
 
         stage('Smoke Test') {
             steps {
-                echo "Running smoke test against ${env.APP_BASE_URL}..."
-                sh '''
-                    sleep 5
-                    curl -f "$APP_BASE_URL/health"
-                    curl -f "$APP_BASE_URL/api/v1/stats"
-                    echo "Smoke test passed."
-                '''
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo "Running smoke test against ${metadata.appBaseUrl}..."
+                    withEnv(["APP_BASE_URL=${metadata.appBaseUrl}"]) {
+                        sh '''
+                            sleep 5
+                            curl -f "$APP_BASE_URL/health"
+                            curl -f "$APP_BASE_URL/api/v1/stats"
+                            echo "Smoke test passed."
+                        '''
+                    }
+                }
             }
         }
 
         stage('Promote Stable') {
             steps {
-                echo "Promoting ${env.IMAGE_REF} to stable..."
-                sh '''
-                    docker tag "$IMAGE_REF" "$STABLE_REF"
-                    docker push "$STABLE_REF"
-                '''
+                script {
+                    def metadata = resolveBuildMetadata()
+                    echo "Promoting ${metadata.imageRef} to stable..."
+                    withEnv([
+                        "IMAGE_REF=${metadata.imageRef}",
+                        "STABLE_REF=${metadata.stableRef}",
+                    ]) {
+                        sh '''
+                            docker tag "$IMAGE_REF" "$STABLE_REF"
+                            docker push "$STABLE_REF"
+                        '''
+                    }
+                }
             }
         }
     }
