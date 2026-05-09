@@ -8,7 +8,7 @@ def resolveBuildMetadata() {
 
     def dockerRepo = env.DOCKERHUB_REPO?.trim()
     if (!dockerRepo) {
-        dockerRepo = 'docker.io/dianggraeni/taskflow-api'
+        error('DOCKERHUB_REPO is not set. Check dockerhub-credentials or pipeline metadata setup.')
     }
 
     def imageTag = "sha-${shortSha}"
@@ -75,7 +75,8 @@ pipeline {
         COVERAGE_HTML = 'coverage.html'
         DB_CONTAINER = "taskflow-ci-db-${env.BUILD_NUMBER}"
         STAGING_CONTAINER = 'taskflow-api-staging'
-        DOCKERHUB_REPO = 'docker.io/dianggraeni/taskflow-api'
+        DOCKERHUB_IMAGE_NAME = 'taskflow-api'
+        DOCKERHUB_REPO = ''
         DOCKER_HOST_GATEWAY = '172.17.0.1'
         DEPLOY_PORT = '18080'
         STAGING_DATABASE_URL = 'postgres://taskflow:taskflow_secret@172.17.0.1:5432/taskflow?sslmode=disable'
@@ -108,6 +109,10 @@ pipeline {
         stage('Init Metadata') {
             steps {
                 script {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                        env.DOCKERHUB_REPO = "docker.io/${DOCKERHUB_USERNAME}/${env.DOCKERHUB_IMAGE_NAME}"
+                    }
+
                     def metadata = resolveBuildMetadata()
 
                     writeFile(
@@ -252,7 +257,7 @@ build_url=${env.BUILD_URL ?: ''}
                             sh '''
                                 docker build -f Dockerfile.legacy -t taskflow-api:legacy-compare .
 
-                                multi_human=$(docker image ls "$IMAGE_REF" --format '{{.Size}}')
+                                multi_human=$(docker image inspect "$IMAGE_REF" --format '{{.Size}}')
                                 multi_bytes=$(docker image inspect "$IMAGE_REF" --format '{{.Size}}')
                                 legacy_human=$(docker image ls taskflow-api:legacy-compare --format '{{.Size}}')
                                 legacy_bytes=$(docker image inspect taskflow-api:legacy-compare --format '{{.Size}}')
