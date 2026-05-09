@@ -340,7 +340,7 @@ EOF
                         sh '''
                             sleep 5
                             curl -f "$APP_BASE_URL/health"
-                            curl -f "$APP_BASE_URL/api/v1/stats"
+                            curl -f "$APP_BASE_URL/api/v1/statss"
                             echo "Smoke test passed."
                         '''
                     }
