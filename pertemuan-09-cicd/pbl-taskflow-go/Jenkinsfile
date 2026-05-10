@@ -12,7 +12,6 @@ pipeline {
         stage('Skenario 6: Security Scan') {
             agent {
                 docker { 
-                    // Kita pakai Go terbaru khusus untuk SCAN agar tool gosec bisa jalan
                     image 'golang:latest' 
                     args "-u root"
                 } 
@@ -23,23 +22,31 @@ pipeline {
                         export GOPATH=/tmp/go
                         export GOCACHE=/tmp/.cache
                         export PATH=$PATH:/tmp/go/bin
+                        
+                        echo "Syncing dependencies..."
                         go mod download
                         
-                        echo "Running SAST & SCA..."
+                        echo "Installing Security Tools..."
+                        go install github.com/securego/gosec/v2/cmd/gosec@latest
+                        go install golang.org/x/vuln/cmd/govulncheck@latest
+                        
+                        echo "Running SAST (Gosec)..."
                         /tmp/go/bin/gosec -fmt json -out gosec-report.json ./... || true
+                        
+                        echo "Running SCA (Govulncheck)..."
                         /tmp/go/bin/govulncheck ./... > vuln-report.txt || true
                     '''
-                    // PERBAIKAN: Path artifact harus langsung ke nama filenya karena kita sudah di dalam 'dir'
+                    // Simpan laporan untuk audit (Skenario 6)
                     archiveArtifacts artifacts: "gosec-report.json, vuln-report.txt", allowEmptyArchive: true
                 }
             }
+        }
 
         stage('Build & Push (Skenario 3)') {
             steps {
                 script {
                     dir("${SUB_DIR}") {
                         docker.withRegistry('', DOCKER_CREDS) {
-                            // Makefile akan mem-build image menggunakan Dockerfile (Go 1.22)
                             sh "make docker-build REGISTRY=${REGISTRY}"
                             sh "make docker-push REGISTRY=${REGISTRY}"
                         }
@@ -59,20 +66,3 @@ pipeline {
                         curl -sf http://localhost:8080/health || exit 1
                         echo "✅ Smoke test berhasil"
                     '''
-                }
-            }
-        }
-
-        stage('Skenario 5: Update Stable Tag') {
-            steps {
-                script {
-                    dir("${SUB_DIR}") {
-                        docker.withRegistry('', DOCKER_CREDS) {
-                            sh "make docker-stable REGISTRY=${REGISTRY}"
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
