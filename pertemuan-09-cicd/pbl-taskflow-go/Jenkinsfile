@@ -43,9 +43,13 @@ pipeline {
                     sh """
                         docker stop taskflow-api || true
                         docker rm taskflow-api || true
-                        docker run -d --name taskflow-api -p 8080:8080 ${env.REGISTRY}/${env.IMAGE_NAME}:latest
+                        # GUNAKAN PORT 8081 agar tidak bentrok dengan Jenkins
+                        docker run -d --name taskflow-api -p 8081:8080 ${env.REGISTRY}/${env.IMAGE_NAME}:latest
                         sleep 5
-                        curl -sf http://localhost:8080/health || exit 1
+                        # Cek ke port 8081
+                        curl -sf http://localhost:8081/health || exit 1
+                        curl -sf http://localhost:8081/api/v1/stats || exit 1
+                        echo "✅ Smoke test berhasil di port 8081"
                     """
                 }
             }
