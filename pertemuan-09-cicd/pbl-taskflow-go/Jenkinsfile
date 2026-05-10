@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    environment {
+        // GANTI dengan username Docker Hub kamu
+        REGISTRY = "docker.io/username_kamu" 
+        IMAGE_NAME = "taskflow-api"
+        DOCKER_CREDS = 'docker-hub-credentials'
+    }
+
+    stages {
+        stage('Skenario 6: Security Scan') {
+            agent {
+                docker { image 'golang:1.22' }
+            }
+            steps {
+                sh '''
+                    go install github.com/securego/gosec/v2/cmd/gosec@latest
+                    go install golang.org/x/vuln/cmd/govulncheck@latest
+                    
+                    # Jalankan Scan & simpan hasil
+                    $(go env GOPATH)/bin/gosec -fmt json -out gosec-report.json ./... || true
+                    $(go env GOPATH)/bin/govulncheck ./... > vuln-report.txt || true
+                '''
+                archiveArtifacts artifacts: 'gosec-report.json, vuln-report.txt', allowEmptyArchive: true
+            }
+        }
+
+        stage('Build & Push (Makefile)') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKER_CREDS) {
+                        // Memanggil target dari Makefile temen kamu
+                        sh "make docker-build REGISTRY=${REGISTRY}"
+                        sh "make docker-push REGISTRY=${REGISTRY}"
+                    }
+                }
+            }
+        }
+
+        stage('Skenario 4: Smoke Test') {
+            steps {
+                sh '''
+                    # Jalankan container (bisa pakai docker run manual atau up)
+                    docker stop taskflow-api || true
+                    docker run -d --name taskflow-api -p 8080:8080 ${REGISTRY}/${IMAGE_NAME}:latest
+                    sleep 5
+                    # Health check sesuai standard soal
+                    curl -sf http://localhost:8080/health || exit 1
+                    curl -sf http://localhost:8080/api/v1/stats || exit 1
+                '''
+            }
+        }
+
+        stage('Skenario 5: Promote to Stable') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKER_CREDS) {
+                        // Memanggil target 'docker-stable' dari Makefile
+                        sh "make docker-stable REGISTRY=${REGISTRY}"
+                    }
+                }
+            }
+        }
+    }
+}
