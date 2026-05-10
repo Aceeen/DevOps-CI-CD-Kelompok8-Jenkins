@@ -20,26 +20,19 @@ pipeline {
             steps {
                 dir("${SUB_DIR}") {
                     sh '''
-                        # Pindahkan lokasi install dan cache ke folder temporary
                         export GOPATH=/tmp/go
                         export GOCACHE=/tmp/.cache
                         export PATH=$PATH:/tmp/go/bin
+                        go mod download
                         
-                        echo "Installing Security Tools..."
-                        # Install versi spesifik yang stabil atau latest
-                        go install github.com/securego/gosec/v2/cmd/gosec@latest
-                        go install golang.org/x/vuln/cmd/govulncheck@latest
-                        
-                        echo "Running SAST (Gosec)..."
+                        echo "Running SAST & SCA..."
                         /tmp/go/bin/gosec -fmt json -out gosec-report.json ./... || true
-                        
-                        echo "Running SCA (Govulncheck)..."
                         /tmp/go/bin/govulncheck ./... > vuln-report.txt || true
                     '''
-                    archiveArtifacts artifacts: 'pertemuan-09-cicd/pbl-taskflow-go/gosec-report.json, pertemuan-09-cicd/pbl-taskflow-go/vuln-report.txt', allowEmptyArchive: true
+                    // PERBAIKAN: Path artifact harus langsung ke nama filenya karena kita sudah di dalam 'dir'
+                    archiveArtifacts artifacts: "gosec-report.json, vuln-report.txt", allowEmptyArchive: true
                 }
             }
-        }
 
         stage('Build & Push (Skenario 3)') {
             steps {
