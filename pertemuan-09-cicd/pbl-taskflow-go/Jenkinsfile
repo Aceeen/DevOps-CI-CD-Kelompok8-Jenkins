@@ -12,29 +12,31 @@ pipeline {
         stage('Skenario 6: Security Scan') {
             agent {
                 docker { 
-                    image 'golang:1.22' 
-                    // FIX: Jalankan sebagai root agar bisa menulis cache dan install tools
-                    args "-u root -v /var/run/docker.sock:/var/run/docker.sock"
+                    // Kita pakai Go terbaru khusus untuk SCAN agar tool gosec bisa jalan
+                    image 'golang:latest' 
+                    args "-u root"
                 } 
             }
             steps {
                 dir("${SUB_DIR}") {
                     sh '''
-                        # Tentukan lokasi cache Go ke folder yang pasti bisa ditulis
-                        export GOCACHE=/tmp/.cache/go-build
+                        # Pindahkan lokasi install dan cache ke folder temporary
                         export GOPATH=/tmp/go
+                        export GOCACHE=/tmp/.cache
+                        export PATH=$PATH:/tmp/go/bin
                         
                         echo "Installing Security Tools..."
+                        # Install versi spesifik yang stabil atau latest
                         go install github.com/securego/gosec/v2/cmd/gosec@latest
                         go install golang.org/x/vuln/cmd/govulncheck@latest
                         
-                        echo "Running Gosec (SAST)..."
+                        echo "Running SAST (Gosec)..."
                         /tmp/go/bin/gosec -fmt json -out gosec-report.json ./... || true
                         
-                        echo "Running Govulncheck (SCA)..."
+                        echo "Running SCA (Govulncheck)..."
                         /tmp/go/bin/govulncheck ./... > vuln-report.txt || true
                     '''
-                    archiveArtifacts artifacts: 'gosec-report.json, vuln-report.txt', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'pertemuan-09-cicd/pbl-taskflow-go/gosec-report.json, pertemuan-09-cicd/pbl-taskflow-go/vuln-report.txt', allowEmptyArchive: true
                 }
             }
         }
@@ -44,7 +46,7 @@ pipeline {
                 script {
                     dir("${SUB_DIR}") {
                         docker.withRegistry('', DOCKER_CREDS) {
-                            // Memastikan Makefile menggunakan Registry kamu
+                            // Makefile akan mem-build image menggunakan Dockerfile (Go 1.22)
                             sh "make docker-build REGISTRY=${REGISTRY}"
                             sh "make docker-push REGISTRY=${REGISTRY}"
                         }
@@ -59,7 +61,6 @@ pipeline {
                     sh '''
                         docker stop taskflow-api || true
                         docker rm taskflow-api || true
-                        # Jalankan container baru dari image yang baru di-push
                         docker run -d --name taskflow-api -p 8080:8080 ${REGISTRY}/${IMAGE_NAME}:latest
                         sleep 5
                         curl -sf http://localhost:8080/health || exit 1
