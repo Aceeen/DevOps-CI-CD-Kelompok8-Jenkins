@@ -1,68 +1,65 @@
 pipeline {
-    agent any 
-
+    agent any
     environment {
-        REGISTRY = "docker.io/karisuta7" 
+        REGISTRY = "docker.io/karisuta7"
         IMAGE_NAME = "taskflow-api"
         DOCKER_CREDS = 'docker-hub-credentials'
         SUB_DIR = 'pertemuan-09-cicd/pbl-taskflow-go'
     }
-
     stages {
         stage('Skenario 6: Security Scan') {
-            agent {
-                docker { 
-                    image 'golang:latest' 
-                    args "-u root"
-                } 
-            }
+            agent { docker { image 'golang:latest'; args "-u root" } }
             steps {
-                dir("${SUB_DIR}") {
-                    sh '''
+                dir("${env.SUB_DIR}") {
+                    sh """
                         export GOPATH=/tmp/go
                         export GOCACHE=/tmp/.cache
-                        export PATH=$PATH:/tmp/go/bin
-                        
-                        echo "Syncing dependencies..."
+                        export PATH=\$PATH:/tmp/go/bin
                         go mod download
-                        
-                        echo "Installing Security Tools..."
                         go install github.com/securego/gosec/v2/cmd/gosec@latest
                         go install golang.org/x/vuln/cmd/govulncheck@latest
-                        
-                        echo "Running SAST (Gosec)..."
                         /tmp/go/bin/gosec -fmt json -out gosec-report.json ./... || true
-                        
-                        echo "Running SCA (Govulncheck)..."
                         /tmp/go/bin/govulncheck ./... > vuln-report.txt || true
-                    '''
-                    // Simpan laporan untuk audit (Skenario 6)
-                    archiveArtifacts artifacts: "gosec-report.json, vuln-report.txt", allowEmptyArchive: true
+                    """
+                    archiveArtifacts artifacts: 'gosec-report.json, vuln-report.txt', allowEmptyArchive: true
                 }
             }
         }
-
-        stage('Build & Push (Skenario 3)') {
+        stage('Build & Push') {
             steps {
-                script {
-                    dir("${SUB_DIR}") {
-                        docker.withRegistry('', DOCKER_CREDS) {
-                            sh "make docker-build REGISTRY=${REGISTRY}"
-                            sh "make docker-push REGISTRY=${REGISTRY}"
+                dir("${env.SUB_DIR}") {
+                    script {
+                        docker.withRegistry('', env.DOCKER_CREDS) {
+                            sh "make docker-build REGISTRY=${env.REGISTRY}"
+                            sh "make docker-push REGISTRY=${env.REGISTRY}"
                         }
                     }
                 }
             }
         }
-
-        stage('Smoke Test (Skenario 4)') {
+        stage('Smoke Test') {
             steps {
-                dir("${SUB_DIR}") {
-                    sh '''
+                dir("${env.SUB_DIR}") {
+                    sh """
                         docker stop taskflow-api || true
                         docker rm taskflow-api || true
-                        docker run -d --name taskflow-api -p 8080:8080 ${REGISTRY}/${IMAGE_NAME}:latest
+                        docker run -d --name taskflow-api -p 8080:8080 ${env.REGISTRY}/${env.IMAGE_NAME}:latest
                         sleep 5
                         curl -sf http://localhost:8080/health || exit 1
-                        echo "✅ Smoke test berhasil"
-                    '''
+                    """
+                }
+            }
+        }
+        stage('Skenario 5: Update Stable Tag') {
+            steps {
+                dir("${env.SUB_DIR}") {
+                    script {
+                        docker.withRegistry('', env.DOCKER_CREDS) {
+                            sh "make docker-stable REGISTRY=${env.REGISTRY}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
