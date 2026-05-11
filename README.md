@@ -1,12 +1,17 @@
-Kelompok: 8
-Mata Kuliah: Operasional Pengembang (DevOps)
-Tool CI/CD: Jenkins (Declarative Pipeline)
-Platform: Docker Desktop (Local) & Docker Hub
-Anggota:
-Acintya Edria Sudarsono [5027231020] - Backend & QA Engineer, Skenario 1
-Tsaldia Hukma Cita [5027231036] - CI Engineer (Jenkins), Skenario 2
-Dian Anggraeni [5027231016] - DevOps Engineer, Skenario 3 & 4
-Callista Meyra Azizah [5027231060] - Reliability & Security Engineer (Koordinator), Skenario 5 & 6
+### Project Overview
+Proyek ini merupakan implementasi sistem CI/CD otomatis untuk backend **TaskFlow Inc.** menggunakan **Jenkins**. Kami mengintegrasikan pengujian otomatis, analisis keamanan statis (SAST/SCA), kontainerisasi multi-stage, hingga strategi rollback untuk menjamin keandalan deployment.
+
+---
+
+### 👥 Kelompok 8 — Tim DevOps Konsultan
+| Nama Anggota | NRP | Peran Utama | Fokus Tugas |
+| :--- | :---: | :--- | :--- |
+| **Acintya Edria Sudarsono** | 5027231020 | **Backend & QA Engineer** | Skenario 1 (Bug Hunting & Unit Testing) |
+| **Tsaldia Hukma Cita** | 5027231036 | **CI Engineer (Jenkins)** | Skenario 2 (Pipeline Automation & Gate) |
+| **Dian Anggraeni** | 5027231016 | **DevOps Engineer** | Skenario 3 & 4 (Dockerization & Smoke Test) |
+| **Callista Meyra Azizah** | 5027231060 | **Reliability & Security Engineer** | Skenario 5 & 6 (Rollback & Security Audit) |
+
+---
 
 # Laporan Skenario 1 — Bug Fix, Testing & Coverage
 
