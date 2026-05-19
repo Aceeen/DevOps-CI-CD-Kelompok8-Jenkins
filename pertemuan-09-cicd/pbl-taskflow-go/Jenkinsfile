@@ -223,6 +223,56 @@ build_url=${env.BUILD_URL ?: ''}
             }
         }
 
+        stage('Security Scan - SAST Gosec') {
+            steps {
+                echo 'Running SAST scan with gosec...'
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        export GOPATH=/tmp/go
+                        export GOCACHE=/tmp/.cache
+                        export PATH=$PATH:/tmp/go/bin
+
+                        go install github.com/securego/gosec/v2/cmd/gosec@latest
+                        gosec -fmt json -out gosec-report.json ./...
+
+                        echo "Gosec scan completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    dir("${env.PROJECT_DIR}") {
+                        archiveArtifacts artifacts: 'gosec-report.json', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
+        stage('Security Scan - SCA Govulncheck') {
+            steps {
+                echo 'Running SCA scan with govulncheck...'
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        export GOPATH=/tmp/go
+                        export GOCACHE=/tmp/.cache
+                        export PATH=$PATH:/tmp/go/bin
+
+                        go install golang.org/x/vuln/cmd/govulncheck@latest
+                        govulncheck -json ./... > vuln-report.json
+
+                        echo "Govulncheck scan completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    dir("${env.PROJECT_DIR}") {
+                        archiveArtifacts artifacts: 'vuln-report.json', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
         stage('Build Binary') {
             steps {
                 echo 'Building Linux binary...'
