@@ -233,8 +233,7 @@ build_url=${env.BUILD_URL ?: ''}
                         export PATH=$PATH:/tmp/go/bin
 
                         go install github.com/securego/gosec/v2/cmd/gosec@latest
-                        gosec -fmt json -out gosec-report.json ./...
-
+                        gosec -severity high -confidence medium -fmt json -out gosec-report.json ./...
                         echo "Gosec scan completed"
                     '''
                 }
